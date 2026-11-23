@@ -228,11 +228,14 @@ handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-tes
 
 ## 已知限制
 
-- 未签名。模拟器能装（实测系统不拦 unsigned），真机装不上。
-  补签名的两种做法写在 `harmony/build-profile.json5` 的 `signingConfigs` 注释里了，
-  拿到 p12 / cer / p7b 填进去就行。注意 profile 里绑定的是 `com.zkksdk.chatdemo`，
-  换 bundleName 或换真机都要重新申请。
-- 真机没测过，只在模拟器上验证过。
+- **签名已经打通，真机跑起来了。** AGC 里已注册：
+  - 应用名 `ChatDemo`，包名 `com.zkksdk.chatdemo`，APP ID `6917622605832751846`
+  - 调试证书 `auto_debug_40086000300595302.cer`（配额满了，复用的现有证书）
+  - 调试 Profile `chatdemo-debug`，2027-11-18 到期，绑定了这台 Mate 60 Pro
+  - 签名材料放在 `~/.ohos/config/`：`chatdemo-debug.cer` + `chatdemo-debug.p7b` + 配对的那个 p12
+  - **因为含密码，`signingConfigs` 提交时留空**。本地构建时把
+    `~/.ohos/config` 下那三个文件路径填进 `harmony/build-profile.json5` 即可。
+- 真机已验证：Mate 60 Pro（ALN-AL80，API 26），签名包装上、启动、渲染正常、跟随系统深色。
 - 输入区在窄屏（<768px）已改成单行横向滑动，四行压回一行，代价是靠右的胶囊
   （工作区、提示词）藏在滑动区里，需要横滑才看得到。**横屏下没有这个问题**——宽度够了，
   全套控件自然展开成一行，所以爱看长内容的话横过来体验更好。
