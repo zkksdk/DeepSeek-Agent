@@ -98,6 +98,7 @@ scripts/sync-harmony-assets.mjs         拷 dist 并生成 _assets.json
 | 多轮用量统计 | 通过，「输入 22.1k tok / 输出 254 tok / 首字 6.34s / 缓存 97.9%」 |
 | 并行 / 后台工具 | 通过，时间 → 天气（自动转后台）→ 读任务结果三步链，卡片带「已转后台」状态与 JSON 参数 |
 | 附件上传 | 通过，回形针 → 系统「选择上传」→ 图库（最多 50 张）/ 拍照或录像 / 文件 |
+| 朗读（服务端 TTS） | 通过，点喇叭后按钮进播放态，`AudioRenderSink` 在渲染音频帧 |
 | 下载落盘 | 通过，blob 下载 → 系统保存面板 → 文件进 `/storage/media/100/local/files/Docs` |
 | 返回键 | 通过，首页按返回回桌面，不再黑屏 |
 | 冷启动 | 首启 3.43 s、有缓存 2.6 s（`onCreate` → `page end`） |
@@ -165,16 +166,24 @@ handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-tes
 | 剪贴板读写 | true | `navigator.clipboard` 读写都在 |
 | 定位 | true | `navigator.geolocation`，配系统权限 |
 | 录音 | true | `getUserMedia` + `MediaRecorder` 都在，语音输入可用 |
-| 朗读 | true | `speechSynthesis` 在 |
+| 朗读 | true | 见下：这条路和 `speechSynthesis` 无关 |
 | Web Crypto | true | `crypto.subtle` 在 |
 | Worker / WASM / OffscreenCanvas | true | Monaco 和并行计算都能跑 |
 | `navigator.share` | **false** | 系统分享面板用不了，下载走了 `DocumentViewPicker` |
+| Web Speech (`speechSynthesis`) | 对象在，但 **`getVoices()` 返回 0** | 看起来像"朗读废了"，其实**不影响**——见下面的说明 |
 | `showSaveFilePicker` / `showDirectoryPicker` | 存在但**退化** | 见下 |
 | `<input type="file">` | true | 触发系统「选择上传」：图库（最多 50 张）/ 拍照或录像 / 文件 |
 
 两条有实际后果：
 
 **Notification 缺失** —— 上游那个「发送通知」工具直接 `new Notification(...)`，在壳里必然失败，所以加了一层原生桥（下一节）。
+
+**`speechSynthesis` 没有语音** —— 别被它骗了。这个应用的朗读**不走 Web Speech**：
+它请求服务端 TTS 拿 16-bit PCM 流，用 `AudioContext` 排程播放（`services/speech/readAloud.ts`）。
+所以真正的前提是 `AudioContext`，那条是 true。实测点喇叭后状态进播放态，
+系统日志里能看到 `AudioRenderSink: [RenderFrame] len: [3840]`，确实在出声。
+顺带一提：这个 SDK 里**没有** ArkTS 侧的 TTS API（只有 `@ohos.ai.mindSporeLite`），
+想做原生朗读桥也没得做，好在也不需要。
 
 **File System Access 是退化的** —— `showDirectoryPicker` 存在，但它弹的是系统的「选择上传」
 （图库 / 拍照或录像 / 文件），不是目录树选择器，拿到的不是可遍历的目录句柄。
