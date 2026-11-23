@@ -80,7 +80,13 @@ $StartedAt = (Get-Date).AddSeconds(-10)
 Hdc shell aa start -a EntryAbility -b $Bundle | Out-Null
 Start-Sleep -Seconds 8
 
-# 首次装完会弹两个权限，坐标对应 1320x2856 的模拟器
+# 首次装完会弹两个权限。坐标是 1320x2856（模拟器 Pura 90）下量的：
+#   定位「仅使用期间允许」 (661, 2060)
+#   麦克风「允许」        (947, 1732)
+#
+# 换分辨率或换机型必须重新量，别靠猜。可靠的量法：截图后用 System.Drawing
+# 裁出目标区域放大 2 倍再读像素坐标。这一轮就因为把回形针按钮的 y 猜低了
+# 150px，白点了四五次才弹出文件选择器。
 if (-not $SkipInstall) {
   Tap 661 2060
   Start-Sleep -Seconds 3
