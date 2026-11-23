@@ -1,3 +1,9 @@
+> **鸿蒙手机版：** 这个 fork 在 DeepSeek-Agent 之上加了一层 HarmonyOS NEXT 原生壳，
+> web 产物跑在 ArkWeb 容器里，工程在 `harmony/`。构建方式、实测结论，以及哪些能力
+> 在手机上跑不了，都写在 [HARMONY.md](HARMONY.md)。
+>
+> 下面这份 README 是上游原文，对 web 版仍然有效。
+
 # chat-demo
 
 [English](README.md) | 简体中文

@@ -1,3 +1,10 @@
+> **HarmonyOS shell:** this fork adds a HarmonyOS NEXT native wrapper on top of
+> DeepSeek-Agent — the web build is served inside an ArkWeb container from
+> `harmony/`. Build instructions, measured behaviour and the list of things that
+> cannot work on a phone are in [HARMONY.md](HARMONY.md).
+>
+> The rest of this README is upstream and still accurate for the web build.
+
 # DeepSeek Agent
 
 [English](README.en.md) | 简体中文
