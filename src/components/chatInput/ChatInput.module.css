@@ -406,3 +406,27 @@ body[data-ds-dark-theme] .wrapper[data-glass].home {
     cursor: not-allowed;
   }
 }
+
+/*
+ * 手机窄屏：模型 / 权限 / 工作区 / 提示词 / 搜索这几颗胶囊如果允许换行，
+ * 会竖直堆成四行，把输入区顶掉大半个屏幕。改成单行 + 横向滑动，高度压回一行，
+ * 右侧的发送区固定不动。
+ *
+ * 必须写在文件末尾：.toggles 本体在中间声明了 flex-wrap: wrap，同优先级下
+ * 后声明的胜出，这条写在前面会被它盖掉。
+ */
+@media not all and (min-width: 768px) {
+  .toggles {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toggles::-webkit-scrollbar {
+    display: none;
+  }
+}
