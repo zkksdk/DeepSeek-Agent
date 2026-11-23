@@ -16,6 +16,14 @@ const TAG: string = 'DSChat'
  * CORS 也无法通过。这里把 https://app.local/* 全部由拦截器映射到沙箱文件。
  */
 const APP_ORIGIN: string = 'https://app.local'
+/**
+ * 网页版入口。
+ *
+ * 有些功能只在网页版里存在（账号登录、附件、对话历史云端同步），壳里没有对应实现。
+ * 这里给一个直接跳到网页版的开关：cookie 由 ArkWeb 自己留存，登一次就能一直用。
+ */
+const WEB_URL: string = 'https://chat.deepseek.com/'
+
 const HOME_URL: string = APP_ORIGIN + '/index.html'
 
 /**
@@ -34,6 +42,49 @@ const SERVICE_WORKER_PATHS: string[] = ['sw.js', 'service-worker.js']
  * 摘掉之后 pickDirectory 走「showDirectoryPicker 不存在」的分支抛 unsupported，
  * 上游 catch 里把它设成 error: 'open'，用户看到的是明确的失败提示而不是崩。
  */
+/**
+ * 账号凭据补丁。
+ *
+ * DeepSeek 的账号登录换来的不是 API Key，而是一个 OAuth token，它要走
+ * `x-dsh-auth-token` 请求头而不是 `Authorization: Bearer`。实测两者扣的是同一个
+ * 余额（/user/balance 返回 200），只是鉴权头不同；CORS 预检也明确放行了这个头。
+ *
+ * 为了不动上游代码：约定用户填的 key 以 "dsh:" 开头表示「这是账号 token」。
+ * 这里劫持 fetch，把 `Authorization: Bearer dsh:xxx` 换成 `x-dsh-auth-token: xxx`。
+ *
+ * 已知限制：上传附件走的是 `x-api-key`（Anthropic 兼容路径），不经过这个改写，
+ * 所以账号 token 模式下附件上传不可用。
+ */
+const AUTH_TOKEN_PATCH: string =
+  "(function(){" +
+  "if(window.__DS_AUTH_PATCH__)return 'already';" +
+  "window.__DS_AUTH_PATCH__=true;" +
+  "var P='dsh:';" +
+  "var orig=window.fetch;" +
+  "window.fetch=function(input,init){" +
+  "try{" +
+  "if(init&&init.headers){" +
+  "var h=init.headers;" +
+  "var pick=function(n){" +
+  "if(h instanceof Headers)return h.get(n);" +
+  "if(Array.isArray(h)){for(var i=0;i<h.length;i++){if(String(h[i][0]).toLowerCase()===n)return h[i][1];}return null;}" +
+  "for(var k in h){if(k.toLowerCase()===n)return h[k];}" +
+  "return null;};" +
+  "var tok=null;" +
+  "var a=pick('authorization');" +
+  "if(a&&a.indexOf('Bearer '+P)===0)tok=a.slice(('Bearer '+P).length);" +
+  "var xk=pick('x-api-key');" +
+  "if(!tok&&xk&&xk.indexOf(P)===0)tok=xk.slice(P.length);" +
+  "if(tok){" +
+  "var nh=new Headers(h);" +
+  "nh.delete('authorization');" +
+  "nh.delete('x-api-key');" +
+  "nh.set('x-dsh-auth-token',tok);" +
+  "init=Object.assign({},init,{headers:nh});" +
+  "}}}catch(e){}" +
+  "return orig.apply(window,[input,init]);};" +
+  "return 'patched'})()"
+
 const DIRECTORY_PICKER_PATCH: string =
   "(function(){try{delete window.showDirectoryPicker}catch(e){}" +
   "try{Object.defineProperty(window,'showDirectoryPicker'," +
@@ -127,6 +178,8 @@ struct Index {
   /** 注入给页面的原生桥，见 ShellBridge */
   private bridge: ShellBridge | undefined = undefined
   @State private assetsReady: boolean = false
+  /** true = 显示网页版，false = 显示本地打包的 Agent */
+  @State private browserMode: boolean = false
   @State private failure: string = ''
 
   aboutToAppear(): void {
@@ -183,6 +236,15 @@ struct Index {
   private safeFileName(raw: string): string {
     const cleaned = raw.replace(/[\\/:*?"<>|]/g, '_').replace(/^\.+/, '').trim()
     return cleaned.length > 0 ? cleaned.slice(0, 120) : 'download'
+  }
+
+  /** 在本地 Agent 和 DeepSeek 网页版之间切换 */
+  private toggleBrowser(): void {
+    hilog.info(DOMAIN, TAG, 'toggle browser: %{public}s', String(!this.browserMode))
+    this.browserMode = !this.browserMode
+    const url = this.browserMode ? WEB_URL : HOME_URL
+    this.controller.loadUrl(url)
+    hilog.info(DOMAIN, TAG, 'loadUrl: %{public}s', url)
   }
 
   private setupDownload(): void {
@@ -360,7 +422,7 @@ struct Index {
   }
 
   build() {
-    Stack() {
+    Stack({ alignContent: Alignment.TopEnd }) {
       if (this.assetsReady) {
         Web({ src: HOME_URL, controller: this.controller })
           .width('100%')
@@ -410,6 +472,11 @@ struct Index {
               return
             }
             this.controller
+              .runJavaScript(AUTH_TOKEN_PATCH)
+              .catch((error: Error) => {
+                hilog.warn(DOMAIN, TAG, 'auth patch failed: %{public}s', error.message)
+              })
+            this.controller
               .runJavaScript(DIRECTORY_PICKER_PATCH)
               .catch((error: Error) => {
                 hilog.warn(DOMAIN, TAG, 'picker patch failed: %{public}s', error.message)
@@ -441,6 +508,21 @@ struct Index {
                 event.error.getErrorInfo()
               )
             }
+          })
+
+        // 右上角模式切换：Agent（本地打包）↔ 网页版（chat.deepseek.com）
+        // 网页版用账号登录，cookie 由 ArkWeb 自己留存，登一次就能一直用。
+        Button(this.browserMode ? 'Agent' : '网页版')
+          .fontSize(12)
+          .height(30)
+          .padding({ left: 12, right: 12 })
+          .backgroundColor('#B3000000')
+          .fontColor('#FFFFFF')
+          .borderRadius(15)
+          .margin({ right: 10, top: 38 })
+          .zIndex(10)
+          .onClick(() => {
+            this.toggleBrowser()
           })
       } else {
         Column({ space: 16 }) {
