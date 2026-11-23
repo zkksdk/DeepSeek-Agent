@@ -31,10 +31,13 @@ $Sandbox  = "/data/app/el2/100/base/$Bundle/haps/entry/files"
 
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 
-$script:Results = @()
+$script:Results = New-Object System.Collections.ArrayList
 function Record($name, $ok, $detail) {
-  $script:Results += [pscustomobject]@{ Check = $name; Pass = $ok; Detail = $detail }
-  $mark = if ($ok) { "PASS" } else { "FAIL" }
+  # 用 ArrayList 而不是 +=：函数内对 $script: 数组做 += 会重建数组，
+  # 调用方的引用可能还指向旧的，汇总时就数不到失败项（出现过假绿）。
+  $okBool = [bool]$ok
+  [void]$script:Results.Add([pscustomobject]@{ Check = $name; Pass = $okBool; Detail = $detail })
+  $mark = if ($okBool) { "PASS" } else { "FAIL" }
   Write-Host ("[{0}] {1} {2}" -f $mark, $name, $(if ($detail) { "- $detail" } else { "" }))
 }
 
@@ -50,6 +53,12 @@ function Snap($name) {
 
 function Tap($x, $y) { Hdc shell uinput -T -c $x $y | Out-Null }
 
+# hdc 失败时也是往 stdout 写一串文本，直接判"输出非空"会把
+# "[Fail]Not match target founded" 当成成功。统一走这个判断。
+function HdcFailed($out) {
+  return ($out -match "\[Fail\]|Not match target|error:|failed to")
+}
+
 Write-Host "=== 鸿蒙手机版验收 ==="
 Write-Host "设备: $Device"
 Write-Host "输出: $OutDir"
@@ -60,7 +69,7 @@ Record "hdc 可执行" (Test-Path $Hdc) $Hdc
 if (-not (Test-Path $Hdc)) { exit 1 }
 
 $targets = Hdc list targets
-Record "设备已连接" ($targets -notmatch "Empty" -and $targets.Trim().Length -gt 0) $targets.Trim()
+Record "设备已连接" ((-not (HdcFailed $targets)) -and ($targets -notmatch "Empty") -and ($targets -match $Device.Replace(":", ":"))) $targets.Trim()
 
 if (-not $SkipInstall) {
   Record "HAP 已构建" (Test-Path $Hap) $Hap
@@ -98,13 +107,26 @@ Snap "01-launch" | Out-Null
 
 # onCreate 会很快被 hilog 缓冲区冲掉，用进程存在判断是否起来了
 $pidOut = Hdc shell pidof $Bundle
-Record "应用启动（进程存活）" ($pidOut.Trim().Length -gt 0) $pidOut.Trim()
+Record "应用启动（进程存活）" ($pidOut -match "^\s*\d+\s*$") $pidOut.Trim()
 
-$log = Hdc shell "hilog -x"
-Record "页面加载（走拦截器）" ($log -match "page end: https://app.local") ""
+if ($SkipInstall) {
+  # 没有重新启动，hilog 里不会有本次的 page end，这一项无意义
+  Write-Host "[SKIP] 页面加载（走拦截器）- -SkipInstall 模式跳过"
+} else {
+  $log = Hdc shell "hilog -x"
+  Record "页面加载（走拦截器）" ($log -match "page end: https://app.local") ""
+}
 
 # --- 2. 生命周期没有被卡住（只看本次运行期间的记录） ---
 $fault = Hdc shell "ls -t /data/log/faultlog/faultlogger/ 2>/dev/null"
+if (HdcFailed $fault) {
+  # 读不到 faultlogger 不等于"没有超时"，不能放过
+  Record "本次运行无 LIFECYCLE_TIMEOUT" $false "无法读取 faultlogger"
+  $fault = ""
+  $faultUnreadable = $true
+} else {
+  $faultUnreadable = $false
+}
 $freezeHit = ""
 foreach ($line in ($fault -split "`n")) {
   if ($line -match ("sysfreeze-" + [regex]::Escape($Bundle) + "-\d+-(\d{14})")) {
@@ -112,22 +134,36 @@ foreach ($line in ($fault -split "`n")) {
     if ($stamp -ge $StartedAt) { $freezeHit = $line.Trim() }
   }
 }
-Record "本次运行无 LIFECYCLE_TIMEOUT" ($freezeHit -eq "") $freezeHit
+if (-not $faultUnreadable) {
+  Record "本次运行无 LIFECYCLE_TIMEOUT" ($freezeHit -eq "") $freezeHit
+}
 
 # --- 3. 资源不再落沙箱副本 ---
 $sandboxFiles = Hdc shell "ls $Sandbox 2>/dev/null"
-$hasWww = $sandboxFiles -match "www"
-Record "沙箱无 www 副本（直读 rawfile）" (-not $hasWww) $sandboxFiles.Trim()
+$sandboxOk = (-not (HdcFailed $sandboxFiles)) -and ($sandboxFiles -notmatch "www")
+Record "沙箱无 www 副本（直读 rawfile）" $sandboxOk $sandboxFiles.Trim()
 
-# --- 4. 返回键回桌面（不是黑屏） ---
+# --- 4. 调试开关必须全空（发布前最容易被忘的一步） ---
+$indexPath = Join-Path $Here "entry\src\main\ets\pages\Index.ets"
+if (Test-Path $indexPath) {
+  $live = Select-String -Path $indexPath -Pattern "const DEBUG_\w+: string = '[^']+'"
+  $names = ($live | ForEach-Object { ($_.Line -split '=')[0].Trim() }) -join ", "
+  Record "调试开关全部为空" ($null -eq $live) $names
+} else {
+  Record "调试开关全部为空" $false "找不到 Index.ets"
+}
+
+# --- 5. 返回键回桌面（不是黑屏） ---
 Hdc shell uinput -K -d 2 -u 2 | Out-Null
 Start-Sleep -Seconds 3
 $afterPid = Hdc shell pidof $Bundle
 Snap "02-after-back" | Out-Null
-Record "返回键后进程仍在后台" ($afterPid.Trim().Length -gt 0) $afterPid.Trim()
+Record "返回键后进程仍在后台" ($afterPid -match "^\s*\d+\s*$") $afterPid.Trim()
 
 # --- 汇总 ---
-$fail = ($script:Results | Where-Object { -not $_.Pass }).Count
+$total = $script:Results.Count
+$fail = @($script:Results | Where-Object { -not $_.Pass }).Count
+Write-Host "共 $total 项，失败 $fail 项"
 Write-Host ""
 Write-Host "=== 结果 ==="
 $script:Results | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
