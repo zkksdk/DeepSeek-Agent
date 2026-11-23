@@ -68,16 +68,50 @@ Write-Host ""
 Record "hdc 可执行" (Test-Path $Hdc) $Hdc
 if (-not (Test-Path $Hdc)) { exit 1 }
 
+# --- 本地构建检查（不依赖设备，先跑，没设备也有东西可看） ---
+Record "HAP 已构建" (Test-Path $Hap) $Hap
+
+if (Test-Path $Hap) {
+  $hapMB = [math]::Round((Get-Item $Hap).Length / 1MB, 2)
+  # 现在约 11 MB；超过 20 MB 基本就是把 node_modules 或 docs 打进去了
+  Record "HAP 体积合理" ($hapMB -lt 20) "$hapMB MB"
+}
+
+$rawDir = Join-Path $Here "entry\src\main\resources\rawfile\www"
+$manifestPath = Join-Path $rawDir "_assets.json"
+if (Test-Path $manifestPath) {
+  # 别用 @() 包：ConvertFrom-Json 把 JSON 数组当成一个整体对象输出，
+  # 再套 @() 会变成只有 1 个元素的嵌套数组，Count 变成 1、-contains 永远为假。
+  $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+  $missing = @($manifest | Where-Object { -not (Test-Path (Join-Path $rawDir $_)) })
+  $hasIndex = ($manifest -contains "index.html")
+  $detail = ""
+  if ($missing.Count -gt 0) {
+    $detail = "缺 $($missing.Count) 个，首个：$($missing[0])"
+  } elseif (-not $hasIndex) {
+    $detail = "清单里没有 index.html"
+  } else {
+    $detail = "$($manifest.Count) 个文件"
+  }
+  Record "资源清单与 rawfile 一致" (($missing.Count -eq 0) -and $hasIndex) $detail
+} else {
+  Record "资源清单与 rawfile 一致" $false "找不到 _assets.json（先跑 pnpm build:harmony）"
+}
+
+# 调试开关必须是空串，发布前最容易被忘的一步
+$indexPath = Join-Path $Here "entry\src\main\ets\pages\Index.ets"
+if (Test-Path $indexPath) {
+  $live = Select-String -Path $indexPath -Pattern "const DEBUG_\w+: string = '[^']+'"
+  $names = ($live | ForEach-Object { ($_.Line -split '=')[0].Trim() }) -join ", "
+  Record "调试开关全部为空" ($null -eq $live) $names
+} else {
+  Record "调试开关全部为空" $false "找不到 Index.ets"
+}
+
 $targets = Hdc list targets
 Record "设备已连接" ((-not (HdcFailed $targets)) -and ($targets -notmatch "Empty") -and ($targets -match $Device.Replace(":", ":"))) $targets.Trim()
 
 if (-not $SkipInstall) {
-  Record "HAP 已构建" (Test-Path $Hap) $Hap
-  if (-not (Test-Path $Hap)) {
-    Write-Host "先跑 pnpm build:harmony 和 hvigorw assembleHap"
-    exit 1
-  }
-
   Hdc shell aa force-stop $Bundle | Out-Null
   Hdc uninstall $Bundle | Out-Null
   $installOut = Hdc install $Hap
@@ -143,17 +177,7 @@ $sandboxFiles = Hdc shell "ls $Sandbox 2>/dev/null"
 $sandboxOk = (-not (HdcFailed $sandboxFiles)) -and ($sandboxFiles -notmatch "www")
 Record "沙箱无 www 副本（直读 rawfile）" $sandboxOk $sandboxFiles.Trim()
 
-# --- 4. 调试开关必须全空（发布前最容易被忘的一步） ---
-$indexPath = Join-Path $Here "entry\src\main\ets\pages\Index.ets"
-if (Test-Path $indexPath) {
-  $live = Select-String -Path $indexPath -Pattern "const DEBUG_\w+: string = '[^']+'"
-  $names = ($live | ForEach-Object { ($_.Line -split '=')[0].Trim() }) -join ", "
-  Record "调试开关全部为空" ($null -eq $live) $names
-} else {
-  Record "调试开关全部为空" $false "找不到 Index.ets"
-}
-
-# --- 5. 返回键回桌面（不是黑屏） ---
+# --- 4. 返回键回桌面（不是黑屏） ---
 Hdc shell uinput -K -d 2 -u 2 | Out-Null
 Start-Sleep -Seconds 3
 $afterPid = Hdc shell pidof $Bundle
