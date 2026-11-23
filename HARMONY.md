@@ -154,14 +154,29 @@ handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-tes
 | 能力 | 结果 | 说明 |
 | --- | --- | --- |
 | `isSecureContext` | **true** | `https://app.local` 拿到了安全上下文，这是选它而不用 `file://` 的原因 |
-| localStorage | true | 可用 |
-| IndexedDB | true | 可用，会话库正常 |
+| localStorage / IndexedDB | true | 会话库、设置、附件都正常 |
 | `origin` | `https://app.local` | 稳定，重启不变 |
 | serviceWorker | 存在 | 但壳里把 `sw.js` 拦成 404，注册会失败并落到 web 端自己的 catch |
-| **Notification** | **false** | ArkWeb 没实现 Web Notification |
+| **Notification** | **false** | ArkWeb 没实现 Web Notification，见下一节 |
+| 剪贴板读写 | true | `navigator.clipboard` 读写都在 |
+| 定位 | true | `navigator.geolocation`，配系统权限 |
+| 录音 | true | `getUserMedia` + `MediaRecorder` 都在，语音输入可用 |
+| 朗读 | true | `speechSynthesis` 在 |
+| Web Crypto | true | `crypto.subtle` 在 |
+| Worker / WASM / OffscreenCanvas | true | Monaco 和并行计算都能跑 |
+| `navigator.share` | **false** | 系统分享面板用不了，下载走了 `DocumentViewPicker` |
+| `showSaveFilePicker` / `showDirectoryPicker` | 存在但**退化** | 见下 |
 
-最后一条有实际后果：上游那个「发送通知」工具原本直接 `new Notification(...)`，在壳里必然失败。
-所以加了一层原生桥。
+两条有实际后果：
+
+**Notification 缺失** —— 上游那个「发送通知」工具直接 `new Notification(...)`，在壳里必然失败，所以加了一层原生桥（下一节）。
+
+**File System Access 是退化的** —— `showDirectoryPicker` 存在，但它弹的是系统的「选择上传」
+（图库 / 拍照或录像 / 文件），不是目录树选择器，拿到的不是可遍历的目录句柄。
+所以上游「工作区」里的**本地文件夹模式**在手机上是废的；内置演示仓库那套纯前端数据不受影响。
+
+顺带确认：**Monaco 可用**。工作区面板里并排 diff 正常渲染（`src/agent/` 的代码行都在），
+那个 2.7 MB 的 chunk 经拦截器返回没问题。手机屏窄，读起来挤，但功能是通的。
 
 ## 原生桥：通知
 
