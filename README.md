@@ -1,9 +1,62 @@
-> **HarmonyOS shell:** this fork adds a HarmonyOS NEXT native wrapper on top of
-> DeepSeek-Agent — the web build is served inside an ArkWeb container from
-> `harmony/`. Build instructions, measured behaviour and the list of things that
-> cannot work on a phone are in [HARMONY.md](HARMONY.md).
->
-> The rest of this README is upstream and still accurate for the web build.
+# DeepSeek Agent · 鸿蒙手机版
+
+这个仓库在 [Aoan2011/DeepSeek-Agent](https://github.com/Aoan2011/DeepSeek-Agent) 之上，
+加了一层 **HarmonyOS NEXT 原生壳**：web 产物装进 ArkWeb 容器直接跑，不用虚拟机、不用 QEMU。
+
+## 现在能做什么
+
+签名包已经装到真机上跑通了 —— Mate 60 Pro（ALN-AL80，OpenHarmony 7.0.0，API 26，arm64）。
+
+| 能力 | 状态 |
+| --- | --- |
+| 构建 / 签名 / 安装 | 通过（AGC 调试证书 + 调试 Profile） |
+| 首屏渲染、深色跟随系统、横屏双栏 | 通过 |
+| 对话、单工具、多工具链与后台任务 | 通过 |
+| 工作区文件树、Monaco diff | 通过 |
+| 导出下载到系统目录 | 通过 |
+| 附件上传（图库 / 拍照 / 文件） | 通过 |
+| 朗读（服务端 TTS 走 AudioContext） | 通过 |
+| 原生通知 | 通过（ArkWeb 没有 Web Notification，走原生桥） |
+| 账号登录 | OAuth 流程已接通，待真机登录收尾 |
+
+## 怎么构建
+
+```sh
+pnpm install
+pnpm build:harmony          # 打包 web 产物并同步进 rawfile
+```
+
+然后用 DevEco Studio 打开 `harmony/`，或命令行：
+
+```powershell
+$env:DEVECO_SDK_HOME = 'C:\Program Files\Huawei\DevEco Studio\sdk'
+hvigorw.bat assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
+```
+
+签名材料放在 `~/.ohos/config/`，路径填进 `harmony/build-profile.json5` 的 `signingConfigs`（含密码，不提交）。
+
+## 一键验收
+
+```cmd
+harmony\acceptance.cmd
+```
+
+14 项检查：HAP 体积、资源清单一致性、调试开关为空、安装启动、页面加载、无生命周期超时、二次冷启动、返回键。
+
+## 手机上跑不了的
+
+- **桌面端 `desktop/` 的 Python 桥** —— 手机上没有"本机"
+- **浏览器扩展 `extension/`** —— 与壳无关
+- **工作区本地文件夹** —— ArkWeb 的 `showDirectoryPicker` 会退化成文件选择器，壳里把它摘掉让 UI 诚实置灰
+
+## 深入
+
+- [HARMONY.md](HARMONY.md) —— 环境、构建、实测数据、踩过的坑、ArkWeb 能力表、调试开关
+- [harmony/CHANGELOG.md](harmony/CHANGELOG.md) —— 为什么长这样：三个核心决定、按代价排序的坑、刻意没做的事
+
+---
+
+下面这份是上游 README，对 **web 版**仍然有效。
 
 # DeepSeek Agent
 

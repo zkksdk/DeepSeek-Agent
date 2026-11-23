@@ -1,3 +1,11 @@
+> **HarmonyOS NEXT shell:** this fork adds a native ArkWeb container (`harmony/`)
+> so the web build runs directly on a phone — signed, installed and verified on a
+> real Mate 60 Pro. Build instructions, measured behaviour and the list of things
+> that cannot work on a phone are in [HARMONY.md](HARMONY.md); the reasoning is in
+> [harmony/CHANGELOG.md](harmony/CHANGELOG.md).
+>
+> The README below is upstream and still accurate for the web build.
+
 # DeepSeek Agent
 
 English | [简体中文](README.md)

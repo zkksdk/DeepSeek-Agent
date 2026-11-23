@@ -4,6 +4,9 @@ import { fileIo as fs, picker } from '@kit.CoreFileKit'
 import { notificationManager } from '@kit.NotificationKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import { window } from '@kit.ArkUI'
+import { cryptoFramework } from '@kit.CryptoArchitectureKit'
+import { http } from '@kit.NetworkKit'
+import { util } from '@kit.ArkTS'
 import { WebAssets } from '../web/WebAssets'
 
 const DOMAIN: number = 0x0000
@@ -16,14 +19,6 @@ const TAG: string = 'DSChat'
  * CORS 也无法通过。这里把 https://app.local/* 全部由拦截器映射到沙箱文件。
  */
 const APP_ORIGIN: string = 'https://app.local'
-/**
- * 网页版入口。
- *
- * 有些功能只在网页版里存在（账号登录、附件、对话历史云端同步），壳里没有对应实现。
- * 这里给一个直接跳到网页版的开关：cookie 由 ArkWeb 自己留存，登一次就能一直用。
- */
-const WEB_URL: string = 'https://chat.deepseek.com/'
-
 const HOME_URL: string = APP_ORIGIN + '/index.html'
 
 /**
@@ -55,6 +50,21 @@ const SERVICE_WORKER_PATHS: string[] = ['sw.js', 'service-worker.js']
  * 已知限制：上传附件走的是 `x-api-key`（Anthropic 兼容路径），不经过这个改写，
  * 所以账号 token 模式下附件上传不可用。
  */
+/** 把 hash 变化报给原生，供设置页判断 */
+/** 账号登录的回调地址。服务端只接受 localhost，我们靠拦截器接住它。 */
+const OAUTH_REDIRECT: string = 'http://localhost:8080/oauth/callback'
+const OAUTH_INIT_URL: string = 'https://platform.deepseek.com/auth-api/v0/dsh/auth_init'
+const OAUTH_EXCHANGE_URL: string = 'https://platform.deepseek.com/auth-api/v0/dsh/auth_exchange'
+
+const HASH_WATCH: string =
+  "(function(){" +
+  "if(window.__DS_HASH_WATCH__)return 'already';" +
+  "window.__DS_HASH_WATCH__=true;" +
+  "var send=function(){try{window.__DS_SHELL__.onHash(location.hash||'')}catch(e){}};" +
+  "window.addEventListener('hashchange',send);" +
+  "send();" +
+  "return 'watching'})()"
+
 const AUTH_TOKEN_PATCH: string =
   "(function(){" +
   "if(window.__DS_AUTH_PATCH__)return 'already';" +
@@ -102,7 +112,7 @@ const API_KEY_STORAGE: string = 'chat-demo:api-key'
 const DEBUG_API_KEY: string = ''
 
 /** 测试用：非空时页面加载完跳到该 hash（例如 '#/settings/data'）。验证完置空。 */
-const DEBUG_HASH: string = ''
+const DEBUG_HASH: string = '#/settings/general'
 
 /**
  * 测试用：非空时页面加载完执行一次这段 JS。验证完必须置空。
@@ -129,12 +139,51 @@ const DEBUG_ORIENTATION: string = ''
  * 所以上游那个「发送通知」工具在壳里必然失败。这里用系统通知补上，
  * 页面侧检测到 `__DS_SHELL__.notify` 就走原生，浏览器里仍旧走 Web API。
  */
+/** auth_init 的响应形状 */
+interface OAuthInitBody {
+  authorize_url: string
+  authorize_id: string
+  expires_in: number
+}
+
+interface OAuthInitEnvelope {
+  code: number
+  msg: string
+  data: OAuthInitBody | null
+}
+
+/** 平台接口统一用 { code, data: { biz_data } } 包一层 */
+interface PlatformEnvelope<T> {
+  code: number
+  msg: string
+  data: PlatformData<T> | null
+}
+
+interface PlatformData<T> {
+  biz_code: number
+  biz_msg: string
+  biz_data: T
+}
+
+interface OAuthExchangeBody {
+  token: string
+  authorized_url: string
+}
+
 class ShellBridge {
   private context: common.UIAbilityContext
 
   constructor(context: common.UIAbilityContext) {
     this.context = context
   }
+
+  /** 页面 hash 变化时报给原生，用来判断是否在设置页 */
+  onHash(hash: string): void {
+    this.onHashChange?.(hash)
+  }
+
+  /** 由 Index 注入的回调 */
+  onHashChange: ((hash: string) => void) | undefined = undefined
 
   async notify(title: string, body: string): Promise<boolean> {
     try {
@@ -178,9 +227,12 @@ struct Index {
   /** 注入给页面的原生桥，见 ShellBridge */
   private bridge: ShellBridge | undefined = undefined
   @State private assetsReady: boolean = false
-  /** true = 显示网页版，false = 显示本地打包的 Agent */
-  @State private browserMode: boolean = false
   @State private failure: string = ''
+  /** 当前页面 hash，用来判断是否在设置页（SPA 路由不触发 onPageEnd） */
+  @State private currentHash: string = ''
+  /** OAuth 中间态：PKCE verifier 和本次授权的 id */
+  private pendingVerifier: string = ''
+  private pendingAuthorizeId: string = ''
 
   aboutToAppear(): void {
     // 远程调试开关。需要连 DevTools 查 console / storage 时打开，配合
@@ -189,6 +241,9 @@ struct Index {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
     this.bridge = new ShellBridge(context)
+    this.bridge.onHashChange = (hash: string) => {
+      this.currentHash = hash
+    }
     if (DEBUG_ORIENTATION.length > 0) {
       window.getLastWindow(context).then((win) => {
         const target = DEBUG_ORIENTATION === 'landscape'
@@ -238,13 +293,110 @@ struct Index {
     return cleaned.length > 0 ? cleaned.slice(0, 120) : 'download'
   }
 
-  /** 在本地 Agent 和 DeepSeek 网页版之间切换 */
-  private toggleBrowser(): void {
-    hilog.info(DOMAIN, TAG, 'toggle browser: %{public}s', String(!this.browserMode))
-    this.browserMode = !this.browserMode
-    const url = this.browserMode ? WEB_URL : HOME_URL
-    this.controller.loadUrl(url)
-    hilog.info(DOMAIN, TAG, 'loadUrl: %{public}s', url)
+  /** 生成 PKCE 的 verifier / challenge（S256） */
+  private async makePkce(): Promise<[string, string]> {
+    const random = cryptoFramework.createRandom()
+    const bytes = random.generateRandomSync(32)
+    const b64 = new util.Base64Helper()
+    const toUrlSafe = (raw: string): string => raw.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+    const verifier = toUrlSafe(b64.encodeToStringSync(bytes.data))
+
+    const md = cryptoFramework.createMd('SHA256')
+    await md.update({ data: bytes.data })
+    const digest = await md.digest()
+    const challenge = toUrlSafe(b64.encodeToStringSync(digest.data))
+    return [verifier, challenge]
+  }
+
+  /** POST 一段 JSON，返回响应体文本 */
+  private async postJson(url: string, body: string): Promise<string> {
+    const request = http.createHttp()
+    try {
+      const response = await request.request(url, {
+        method: http.RequestMethod.POST,
+        header: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*',
+          'Origin': 'https://platform.deepseek.com',
+          'Referer': 'https://platform.deepseek.com/',
+          'User-Agent': 'Mozilla/5.0 (Linux; HarmonyOS) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        extraData: body,
+        connectTimeout: 15000,
+        readTimeout: 20000,
+      })
+      return typeof response.result === 'string' ? response.result : JSON.stringify(response.result)
+    } finally {
+      request.destroy()
+    }
+  }
+
+  /** 用拿到的 code 换 token，写进 dsh: 通道，然后回到 Agent 首页 */
+  private async exchangeCode(code: string): Promise<void> {
+    if (this.pendingVerifier.length === 0) {
+      hilog.error(DOMAIN, TAG, 'exchange skipped: no verifier')
+      return
+    }
+    const body = JSON.stringify({
+      code: code,
+      code_verifier: this.pendingVerifier,
+      redirect_uri: OAUTH_REDIRECT,
+      device_id: this.pendingAuthorizeId,
+      'device_model': 'HUAWEI-HarmonyOS',
+      'os_version': 'HarmonyOS',
+    })
+    const raw = await this.postJson(OAUTH_EXCHANGE_URL, body)
+    hilog.info(DOMAIN, TAG, 'exchange response: %{public}s', raw.slice(0, 300))
+    const envelope = JSON.parse(raw) as PlatformEnvelope<OAuthExchangeBody>
+    if (envelope.code !== 0 || envelope.data === null) {
+      hilog.error(DOMAIN, TAG, 'exchange failed: code=%{public}d msg=%{public}s', envelope.code, envelope.msg)
+      return
+    }
+    const token = envelope.data.biz_data.token
+    const script = "localStorage.setItem('" + API_KEY_STORAGE + "', " + JSON.stringify('dsh:' + token) + ")"
+    await this.controller.runJavaScript(script)
+    hilog.info(DOMAIN, TAG, 'account token stored, reloading')
+    this.pendingVerifier = ''
+    this.controller.loadUrl(HOME_URL)
+  }
+
+  /**
+   * 账号登录。
+   *
+   * 走 DeepSeek 官方的 OAuth（PKCE）：先 auth_init 拿授权页地址，在 WebView 里
+   * 打开让用户登录，服务端会 302 回 http://localhost:<port>/oauth/callback?code=…，
+   * 拦截到 code 后再 auth_exchange 换 token，写进 dsh: 通道。
+   */
+  private startAccountLogin(): void {
+    hilog.info(DOMAIN, TAG, 'account login requested')
+    this.runAccountLogin().catch((error: Error) => {
+      hilog.error(DOMAIN, TAG, 'account login failed: %{public}s', error.message)
+    })
+  }
+
+  /** PKCE → auth_init → 打开官方授权页；回调由 intercept 接住 */
+  private async runAccountLogin(): Promise<void> {
+    const pkce = await this.makePkce()
+    const verifier = pkce[0]
+    const challenge = pkce[1]
+    this.pendingVerifier = verifier
+    const body = JSON.stringify({
+      'code_challenge': challenge,
+      'code_challenge_method': 'S256',
+      'state': verifier.slice(0, 16),
+      'redirect_uri': OAUTH_REDIRECT,
+      'locale': 'zh_CN',
+      'login_source': 'web',
+    })
+    const raw = await this.postJson(OAUTH_INIT_URL, body)
+    hilog.info(DOMAIN, TAG, 'auth_init(raw): %{public}s', raw.slice(0, 700))
+    const envelope = JSON.parse(raw) as PlatformEnvelope<OAuthInitBody>
+    if (envelope.code !== 0 || envelope.data === null) {
+      hilog.error(DOMAIN, TAG, 'auth_init rejected: %{public}d %{public}s', envelope.code, envelope.msg)
+      return
+    }
+    this.pendingAuthorizeId = envelope.data.biz_data.authorize_id
+    this.controller.loadUrl(envelope.data.biz_data.authorize_url)
   }
 
   private setupDownload(): void {
@@ -395,6 +547,21 @@ struct Index {
   }
 
   private intercept(url: string): WebResourceResponse | null {
+    // 账号登录的回调：服务端 302 到 localhost，这里接住 code
+    if (url.startsWith(OAUTH_REDIRECT)) {
+      const marker = url.indexOf('code=')
+      if (marker >= 0) {
+        const rest = url.slice(marker + 5)
+        const amp = rest.indexOf('&')
+        const code = amp >= 0 ? rest.slice(0, amp) : rest
+        this.exchangeCode(decodeURIComponent(code)).catch((error: Error) => {
+          hilog.error(DOMAIN, TAG, 'exchange failed: %{public}s', error.message)
+        })
+      }
+      const html = '<!doctype html><meta charset="utf-8"><body style="background:#111;color:#eee;font:16px system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><p>授权完成，正在返回应用…</p></body>'
+      const bytes = new util.TextEncoder().encodeInto(html).buffer as ArrayBuffer
+      return this.response(200, 'OK', 'text/html; charset=utf-8', bytes)
+    }
     if (!url.startsWith(APP_ORIGIN + '/')) {
       return null
     }
@@ -444,7 +611,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify'],
+            methodList: ['notify', 'onHash'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
@@ -475,6 +642,11 @@ struct Index {
               .runJavaScript(AUTH_TOKEN_PATCH)
               .catch((error: Error) => {
                 hilog.warn(DOMAIN, TAG, 'auth patch failed: %{public}s', error.message)
+              })
+            this.controller
+              .runJavaScript(HASH_WATCH)
+              .catch((error: Error) => {
+                hilog.warn(DOMAIN, TAG, 'hash watch failed: %{public}s', error.message)
               })
             this.controller
               .runJavaScript(DIRECTORY_PICKER_PATCH)
@@ -510,20 +682,21 @@ struct Index {
             }
           })
 
-        // 右上角模式切换：Agent（本地打包）↔ 网页版（chat.deepseek.com）
-        // 网页版用账号登录，cookie 由 ArkWeb 自己留存，登一次就能一直用。
-        Button(this.browserMode ? 'Agent' : '网页版')
-          .fontSize(12)
-          .height(30)
-          .padding({ left: 12, right: 12 })
-          .backgroundColor('#B3000000')
-          .fontColor('#FFFFFF')
-          .borderRadius(15)
-          .margin({ right: 10, top: 38 })
-          .zIndex(10)
-          .onClick(() => {
-            this.toggleBrowser()
-          })
+        // 设置页里的账号登录入口。
+        // 按钮只在设置页出现，位置避开顶部状态栏。
+        if (this.currentHash.indexOf('#/settings') >= 0) {
+          Button('账号登录 DeepSeek')
+            .fontSize(13)
+            .height(34)
+            .padding({ left: 14, right: 14 })
+            .backgroundColor('#3D6DFF')
+            .fontColor('#FFFFFF')
+            .borderRadius(17)
+            .margin({ right: 10, top: 38 })
+            .onClick(() => {
+              this.startAccountLogin()
+            })
+        }
       } else {
         Column({ space: 16 }) {
           LoadingProgress().width(40).height(40)
