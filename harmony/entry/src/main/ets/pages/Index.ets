@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit'
 import { webview } from '@kit.ArkWeb'
 import { fileIo as fs, picker } from '@kit.CoreFileKit'
+import { notificationManager } from '@kit.NotificationKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import { WebAssets } from '../web/WebAssets'
 
@@ -41,6 +42,48 @@ const DEBUG_HASH: string = ''
  */
 const DEBUG_JS: string = ''
 
+/**
+ * 注入给页面的原生能力。
+ *
+ * ArkWeb 没有实现 Web Notification（实测 `'Notification' in window` 为 false），
+ * 所以上游那个「发送通知」工具在壳里必然失败。这里用系统通知补上，
+ * 页面侧检测到 `__DS_SHELL__.notify` 就走原生，浏览器里仍旧走 Web API。
+ */
+class ShellBridge {
+  private context: common.UIAbilityContext
+
+  constructor(context: common.UIAbilityContext) {
+    this.context = context
+  }
+
+  async notify(title: string, body: string): Promise<boolean> {
+    try {
+      const enabled = await notificationManager.isNotificationEnabled()
+      if (!enabled) {
+        await notificationManager.requestEnableNotification(this.context)
+      }
+      const normal: notificationManager.NotificationBasicContent = {
+        title: title,
+        text: body,
+      }
+      const content: notificationManager.NotificationContent = {
+        notificationContentType:
+          notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+        normal: normal,
+      }
+      const request: notificationManager.NotificationRequest = {
+        id: Math.floor(Date.now() % 100000),
+        content: content,
+      }
+      await notificationManager.publish(request)
+      return true
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'notify failed: %{public}s', (error as Error).message)
+      return false
+    }
+  }
+}
+
 @Entry
 @Component
 struct Index {
@@ -52,6 +95,8 @@ struct Index {
   private downloadDir: string = ''
   /** 交给用户时要用 picker，picker 需要 UIAbilityContext */
   private abilityContext: common.UIAbilityContext | undefined = undefined
+  /** 注入给页面的原生桥，见 ShellBridge */
+  private bridge: ShellBridge | undefined = undefined
   @State private assetsReady: boolean = false
   @State private failure: string = ''
 
@@ -61,6 +106,7 @@ struct Index {
     // webview.WebviewController.setWebDebuggingAccess(true)
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
+    this.bridge = new ShellBridge(context)
     this.downloadDir = context.filesDir + '/downloads'
     if (!fs.accessSync(this.downloadDir)) {
       fs.mkdirSync(this.downloadDir, true)
@@ -254,6 +300,12 @@ struct Index {
           .onControllerAttached(() => {
             // 下载代理要在 controller 绑定之后才能设
             this.setupDownload()
+          })
+          .javaScriptProxy({
+            object: this.bridge as ShellBridge,
+            name: '__DS_SHELL__',
+            methodList: ['notify'],
+            controller: this.controller,
           })
           .onInterceptRequest((event) => {
             if (!event) {

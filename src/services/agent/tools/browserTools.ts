@@ -329,6 +329,21 @@ const notificationTool = defineTool(
     ),
   },
   async (input) => {
+    const title = str(input, 'title') || 'Agent 通知'
+    const body = str(input, 'body')
+    // 鸿蒙原生壳：ArkWeb 没实现 Web Notification（实测 'Notification' in window 为 false），
+    // 壳会注入 __DS_SHELL__.notify 走系统通知。浏览器里没有这个桥，照旧走 Web API。
+    const shell = (
+      window as unknown as {
+        __DS_SHELL__?: { notify?: (title: string, body: string) => Promise<boolean> }
+      }
+    ).__DS_SHELL__
+    if (shell !== undefined && typeof shell.notify === 'function') {
+      const delivered = await shell.notify(title, body)
+      return delivered
+        ? ok(`已发送通知「${title}」`)
+        : fail('系统通知未送达，可能未授予通知权限')
+    }
     if (!('Notification' in window)) {
       return fail('当前浏览器不支持通知')
     }
@@ -339,8 +354,6 @@ const notificationTool = defineTool(
     if (permission !== 'granted') {
       return fail('通知权限未授予，请在浏览器站点设置中允许通知')
     }
-    const title = str(input, 'title') || 'Agent 通知'
-    const body = str(input, 'body')
     new Notification(title, { body, tag: str(input, 'tag') || undefined })
     return ok(`已发送通知「${title}」`)
   },

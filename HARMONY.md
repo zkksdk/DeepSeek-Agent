@@ -147,6 +147,33 @@ handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-tes
 文件最终在 `/storage/media/100/local/files/Docs/shell-test.txt`，16 字节内容一致，
 沙箱里的临时文件已删除。同一条路径覆盖「导出所有历史对话（ZIP）」和「保存分享图（PNG）」。
 
+## ArkWeb 的 Web 能力实测
+
+用 `DEBUG_JS` 在页面里跑了一段探测，结果：
+
+| 能力 | 结果 | 说明 |
+| --- | --- | --- |
+| `isSecureContext` | **true** | `https://app.local` 拿到了安全上下文，这是选它而不用 `file://` 的原因 |
+| localStorage | true | 可用 |
+| IndexedDB | true | 可用，会话库正常 |
+| `origin` | `https://app.local` | 稳定，重启不变 |
+| serviceWorker | 存在 | 但壳里把 `sw.js` 拦成 404，注册会失败并落到 web 端自己的 catch |
+| **Notification** | **false** | ArkWeb 没实现 Web Notification |
+
+最后一条有实际后果：上游那个「发送通知」工具原本直接 `new Notification(...)`，在壳里必然失败。
+所以加了一层原生桥。
+
+## 原生桥：通知
+
+`ShellBridge`（`Index.ets`）用 `@kit.NotificationKit` 的 `notificationManager.publish`
+发系统通知，通过 `javaScriptProxy` 注入成 `window.__DS_SHELL__`：
+
+- 页面侧 `send_notification` 先看有没有 `__DS_SHELL__.notify`，有就走原生，没有才回退到 Web API
+- 原生侧第一次会调 `requestEnableNotification` 让用户授权
+- 实测调用返回 `true`，日志：`ARKWEB-CONSOLE: "NOTIFY_RESULT=true"`
+
+浏览器里没有这个桥，行为不变——桥是"有就用，没有照旧"的加法。
+
 ## 已知限制
 
 - 未签名。模拟器能装，真机不行，需要在 DevEco 里配 `signingConfigs`。
