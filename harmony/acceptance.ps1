@@ -141,7 +141,15 @@ if (-not $SkipInstall) {
   Start-Sleep -Seconds 3
 }
 
-Snap "01-launch" | Out-Null
+$shot = Snap "01-launch"
+# 空白页（全白/全黑）压出来的 JPEG 只有十几 KB，正常界面在 100 KB 上下。
+# 这是个启发式，不是像素级判据，阈值放得比较松。
+if (Test-Path $shot) {
+  $shotKB = [math]::Round((Get-Item $shot).Length / 1KB)
+  Record "首屏不是空白" ($shotKB -gt 30) "$shotKB KB"
+} else {
+  Record "首屏不是空白" $false "截图没拿到"
+}
 
 # onCreate 会很快被 hilog 缓冲区冲掉，用进程存在判断是否起来了
 $pidOut = Hdc shell pidof $Bundle
@@ -176,7 +184,15 @@ $sandboxFiles = Hdc shell "ls $Sandbox 2>/dev/null"
 $sandboxOk = (-not (HdcFailed $sandboxFiles)) -and ($sandboxFiles -notmatch "www")
 Record "沙箱无 www 副本（直读 rawfile）" $sandboxOk $sandboxFiles.Trim()
 
-# --- 4. 返回键回桌面（不是黑屏） ---
+# --- 4. 二次冷启动（偶发起不来比稳定起不来更坑） ---
+Hdc shell aa force-stop $Bundle | Out-Null
+Start-Sleep -Seconds 2
+Hdc shell aa start -a EntryAbility -b $Bundle | Out-Null
+Start-Sleep -Seconds 8
+$pid2 = Hdc shell pidof $Bundle
+Record "二次冷启动成功" ($pid2 -match "^\s*\d+\s*$") $pid2.Trim()
+
+# --- 5. 返回键回桌面（不是黑屏） ---
 Hdc shell uinput -K -d 2 -u 2 | Out-Null
 Start-Sleep -Seconds 3
 $afterPid = Hdc shell pidof $Bundle
