@@ -100,6 +100,7 @@ scripts/sync-harmony-assets.mjs         拷 dist 并生成 _assets.json
 | 附件上传 | 通过，回形针 → 系统「选择上传」→ 图库（最多 50 张）/ 拍照或录像 / 文件 |
 | 朗读（服务端 TTS） | 通过，点喇叭后按钮进播放态，`AudioRenderSink` 在渲染音频帧 |
 | 深色模式跟随系统 | 通过，应用级切 `ColorMode` 后整个 WebView 跟到深色 |
+| 横屏 | 通过，自动切到桌面两栏布局：侧栏常驻、输入区控件展开成一行、不再需要横滑 |
 | 下载落盘 | 通过，blob 下载 → 系统保存面板 → 文件进 `/storage/media/100/local/files/Docs` |
 | 返回键 | 通过，首页按返回回桌面，不再黑屏 |
 | 冷启动 | 首启 3.43 s、有缓存 2.6 s（`onCreate` → `page end`） |
@@ -211,8 +212,9 @@ handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-tes
   拿到 p12 / cer / p7b 填进去就行。注意 profile 里绑定的是 `com.zkksdk.chatdemo`，
   换 bundleName 或换真机都要重新申请。
 - 真机没测过，只在模拟器上验证过。
-- 输入区在窄屏（<768px）已改成单行横向滑动，四行压回一行。代价是靠右的胶囊
-  （工作区、提示词）藏在滑动区里，需要横滑才看得到；要彻底解决得把它们收进菜单。
+- 输入区在窄屏（<768px）已改成单行横向滑动，四行压回一行，代价是靠右的胶囊
+  （工作区、提示词）藏在滑动区里，需要横滑才看得到。**横屏下没有这个问题**——宽度够了，
+  全套控件自然展开成一行，所以爱看长内容的话横过来体验更好。
 - 工程路径必须是 ASCII。
 
 ## 一键验收
@@ -251,6 +253,7 @@ harmony\acceptance.cmd
 | `DEBUG_HASH` | 页面加载完跳到指定 hash，例如 `#/settings/data` 直达数据页 |
 | `DEBUG_JS` | 页面加载完执行一次任意 JS，用来联调 H5 端的下载、存储之类 |
 | `DEBUG_COLOR_MODE` | `dark` / `light`，启动时用 `setColorMode` 强制颜色模式，用来验证深色跟随 |
+| `DEBUG_ORIENTATION` | `landscape` / `portrait`，启动后用 `setPreferredOrientation` 转屏，用来验证横屏布局 |
 
 另外 `webview.WebviewController.setWebDebuggingAccess(true)` 那一行默认注释着，
 需要连 DevTools 时打开，配合 `hdc fport tcp:9222 tcp:9222`。

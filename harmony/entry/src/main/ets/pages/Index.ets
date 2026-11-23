@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb'
 import { fileIo as fs, picker } from '@kit.CoreFileKit'
 import { notificationManager } from '@kit.NotificationKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
+import { window } from '@kit.ArkUI'
 import { WebAssets } from '../web/WebAssets'
 
 const DOMAIN: number = 0x0000
@@ -47,6 +48,12 @@ const DEBUG_JS: string = ''
  * Web 的 prefers-color-scheme 是否跟着走。验证完必须置空。
  */
 const DEBUG_COLOR_MODE: string = ''
+
+/**
+ * 测试用：非空时启动后强制屏幕方向（'landscape' / 'portrait'），
+ * 用来验证横屏下的布局。验证完必须置空。
+ */
+const DEBUG_ORIENTATION: string = ''
 
 /**
  * 注入给页面的原生能力。
@@ -113,6 +120,16 @@ struct Index {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
     this.bridge = new ShellBridge(context)
+    if (DEBUG_ORIENTATION.length > 0) {
+      window.getLastWindow(context).then((win) => {
+        const target = DEBUG_ORIENTATION === 'landscape'
+          ? window.Orientation.LANDSCAPE
+          : window.Orientation.PORTRAIT
+        win.setPreferredOrientation(target).catch((error: Error) => {
+          hilog.error(DOMAIN, TAG, 'orientation failed: %{public}s', error.message)
+        })
+      })
+    }
     if (DEBUG_COLOR_MODE.length > 0) {
       const mode = DEBUG_COLOR_MODE === 'dark'
         ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
