@@ -424,6 +424,17 @@ body[data-ds-dark-theme] .wrapper[data-glass].home {
     -ms-overflow-style: none;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
+    /*
+     * 滑动区右侧渐隐：不这样做的话第一屏只能看到模型胶囊，
+     * 用户根本不知道右边还有权限、工作区、提示词。把右边缘 28px 淡出当作提示。
+     */
+    -webkit-mask-image: linear-gradient(
+      to right,
+      #000 0,
+      #000 calc(100% - 28px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
   }
 
   .toggles::-webkit-scrollbar {
