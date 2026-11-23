@@ -203,6 +203,32 @@ handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-tes
   （工作区、提示词）藏在滑动区里，需要横滑才看得到；要彻底解决得把它们收进菜单。
 - 工程路径必须是 ASCII。
 
+## 一键验收
+
+改完代码跑一条命令回归：
+
+```sh
+harmony\acceptance.cmd
+```
+
+它会重装 HAP、启动、点掉两个权限弹窗、截图，然后逐项检查：
+
+| 检查 | 判据 |
+| --- | --- |
+| 应用启动 | 进程存活（`onCreate` 会很快被 hilog 缓冲区冲掉，不能当判据） |
+| 页面加载 | hilog 里出现 `page end: https://app.local` |
+| 无生命周期超时 | **本次运行期间**没有新的 sysfreeze 记录（老文件不算） |
+| 资源直读 | 沙箱 `files/` 下没有 `www` 副本 |
+| 返回键 | 按返回后进程仍在后台，既不是黑屏也没被杀死 |
+
+截图落在 `.out/acceptance/`，退出码 0 表示全过。只跑检查不重装：
+`harmony\acceptance.cmd -SkipInstall`。
+
+脚本本身踩过两个编码坑，改它的人注意：
+
+- **`.cmd` 里不能写中文**。cmd 用系统代码页（GBK）解码脚本，UTF-8 的中文会被拆成乱码再当成命令执行。
+- **`.ps1` 必须存成 UTF-8 with BOM**。不然 PowerShell 5.1 按 GBK 解码，中文字符串里的引号错位，直接报"字符串缺少终止符"。
+
 ## 调试开关
 
 `harmony/entry/src/main/ets/pages/Index.ets` 顶部有三个常量，平时都应该是空串：

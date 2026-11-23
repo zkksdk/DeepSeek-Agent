@@ -27,3 +27,5 @@ dist-ext/*
 
 /.workbuddy/
 /.refact/
+
+.out/
