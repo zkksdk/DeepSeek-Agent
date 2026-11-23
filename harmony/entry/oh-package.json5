@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "chat-demo 的鸿蒙入口模块",
+  "main": "",
+  "author": "zkksdk",
+  "license": "MIT",
+  "dependencies": {}
+}

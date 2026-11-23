@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "chat-demo 鸿蒙手机版"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "聊天主界面"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "DS Chat"
+    },
+    {
+      "name": "reason_location",
+      "value": "用于回答与当前位置相关的问题"
+    },
+    {
+      "name": "reason_microphone",
+      "value": "用于语音输入"
+    }
+  ]
+}

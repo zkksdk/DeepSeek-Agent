@@ -1,0 +1,12 @@
+# hvigor / ohpm 产物
+/oh_modules
+/entry/oh_modules
+**/build
+**/.hvigor
+/hvigor/hvigor-wrapper.js
+/hvigor/hvigor-wrapper-config.json
+local.properties
+
+# 由 scripts/build-harmony.mjs 从 web 构建产物拷入
+/entry/src/main/resources/rawfile/www/*
+!/entry/src/main/resources/rawfile/www/.gitkeep
