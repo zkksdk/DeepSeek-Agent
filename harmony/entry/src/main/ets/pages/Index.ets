@@ -24,6 +24,22 @@ const HOME_URL: string = APP_ORIGIN + '/index.html'
  */
 const SERVICE_WORKER_PATHS: string[] = ['sw.js', 'service-worker.js']
 
+/**
+ * 摘掉 showDirectoryPicker。
+ *
+ * 手机上它会退化成系统的文件选择器（图库/拍照/文件），返回的是 File 而不是
+ * DirectoryHandle；上游 pickDirectory 不做类型校验，直接当目录用，后面
+ * dir.values() 一类调用就是 TypeError。
+ *
+ * 摘掉之后 pickDirectory 走「showDirectoryPicker 不存在」的分支抛 unsupported，
+ * 上游 catch 里把它设成 error: 'open'，用户看到的是明确的失败提示而不是崩。
+ */
+const DIRECTORY_PICKER_PATCH: string =
+  "(function(){try{delete window.showDirectoryPicker}catch(e){}" +
+  "try{Object.defineProperty(window,'showDirectoryPicker'," +
+  "{value:undefined,configurable:true,writable:true})}catch(e){}" +
+  "return typeof window.showDirectoryPicker})()"
+
 /** 与 src/services/settings.ts 里的 KEYS.apiKey 保持一致 */
 const API_KEY_STORAGE: string = 'chat-demo:api-key'
 
@@ -393,6 +409,11 @@ struct Index {
                 })
               return
             }
+            this.controller
+              .runJavaScript(DIRECTORY_PICKER_PATCH)
+              .catch((error: Error) => {
+                hilog.warn(DOMAIN, TAG, 'picker patch failed: %{public}s', error.message)
+              })
             if (DEBUG_HASH.length > 0 && !this.navigated) {
               this.navigated = true
               this.controller.loadUrl(HOME_URL + DEBUG_HASH)
