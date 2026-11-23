@@ -98,14 +98,26 @@ if (Test-Path $manifestPath) {
   Record "资源清单与 rawfile 一致" $false "找不到 _assets.json（先跑 pnpm build:harmony）"
 }
 
-# 调试开关必须是空串，发布前最容易被忘的一步
+# 源码里不许留下调试注入开关，也不许留下硬编码凭据。
+# 之前真的把 p12 密码提交上去过一次，所以这里不只查开关，还查密钥形状。
 $indexPath = Join-Path $Here "entry\src\main\ets\pages\Index.ets"
 if (Test-Path $indexPath) {
-  $live = Select-String -Path $indexPath -Pattern "const DEBUG_\w+: string = '[^']+'"
-  $names = ($live | ForEach-Object { ($_.Line -split '=')[0].Trim() }) -join ", "
-  Record "调试开关全部为空" ($null -eq $live) $names
+  $debugLeft = Select-String -Path $indexPath -Pattern 'const DEBUG_\w+'
+  Record '没有调试注入开关' ($null -eq $debugLeft) (($debugLeft | ForEach-Object { $_.Line.Trim() }) -join '; ')
+
+  $secretPat = "'sk-[A-Za-z0-9]{8,}'|'dsh:[A-Za-z0-9_\-]{8,}'|storePassword\s*:\s*'[^']+'|keyPassword\s*:\s*'[^']+'"
+  $secrets = Select-String -Path $indexPath -Pattern $secretPat
+  Record '源码不含硬编码凭据' ($null -eq $secrets) (($secrets | ForEach-Object { $_.Line.Trim() }) -join '; ')
 } else {
-  Record "调试开关全部为空" $false "找不到 Index.ets"
+  Record '没有调试注入开关' $false '找不到 Index.ets'
+  Record '源码不含硬编码凭据' $false '找不到 Index.ets'
+}
+
+# 签名材料只在本机构建时填，提交上去的必须是空数组
+$buildProfile = Join-Path $Here 'build-profile.json5'
+if (Test-Path $buildProfile) {
+  $bf = Get-Content $buildProfile -Raw
+  Record '签名配置未提交' ($bf -match '"signingConfigs"\s*:\s*\[\s*\]') 'signingConfigs 应为空数组'
 }
 
 $targets = Hdc list targets

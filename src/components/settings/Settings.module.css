@@ -769,3 +769,15 @@ body[data-ds-dark-theme] .slider input[type='range'] {
   font-size: 12px;
   color: var(--text-tertiary, #6b7280);
 }
+
+
+.accountBalanceRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.accountBalanceValue {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}

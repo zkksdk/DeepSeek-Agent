@@ -104,33 +104,10 @@ const DIRECTORY_PICKER_PATCH: string =
 /** 与 src/services/settings.ts 里的 KEYS.apiKey 保持一致 */
 const API_KEY_STORAGE: string = 'chat-demo:api-key'
 
-/**
- * 临时验证通道：模拟器里点输入框会拉起软键盘，重绘时整屏卡黑，
- * 没法用键盘敲 key。非空时页面加载完直接写进 localStorage 再刷新一次。
- * 验证完毕必须置空 —— 正式包里不该有这个。
- */
-const DEBUG_API_KEY: string = ''
 
-/** 测试用：非空时页面加载完跳到该 hash（例如 '#/settings/data'）。验证完置空。 */
-const DEBUG_HASH: string = ''
 
-/**
- * 测试用：非空时页面加载完执行一次这段 JS。验证完必须置空。
- * 联调 H5 端的下载、存储、上报之类时，比改代码重装快得多。
- */
-const DEBUG_JS: string = ''
 
-/**
- * 测试用：非空时在启动时强制切颜色模式（'dark' / 'light'），用来验证
- * Web 的 prefers-color-scheme 是否跟着走。验证完必须置空。
- */
-const DEBUG_COLOR_MODE: string = ''
 
-/**
- * 测试用：非空时启动后强制屏幕方向（'landscape' / 'portrait'），
- * 用来验证横屏下的布局。验证完必须置空。
- */
-const DEBUG_ORIENTATION: string = ''
 
 /**
  * 注入给页面的原生能力。
@@ -225,9 +202,6 @@ class ShellBridge {
 @Component
 struct Index {
   private controller: webview.WebviewController = new webview.WebviewController()
-  private injected: boolean = false
-  private navigated: boolean = false
-  private scriptRan: boolean = false
   /** 下载落地目录：先存沙箱，再交给用户 */
   private downloadDir: string = ''
   /** 交给用户时要用 picker，picker 需要 UIAbilityContext */
@@ -254,22 +228,6 @@ struct Index {
     }
     this.bridge.onLogin = () => {
       this.startAccountLogin()
-    }
-    if (DEBUG_ORIENTATION.length > 0) {
-      window.getLastWindow(context).then((win) => {
-        const target = DEBUG_ORIENTATION === 'landscape'
-          ? window.Orientation.LANDSCAPE
-          : window.Orientation.PORTRAIT
-        win.setPreferredOrientation(target).catch((error: Error) => {
-          hilog.error(DOMAIN, TAG, 'orientation failed: %{public}s', error.message)
-        })
-      })
-    }
-    if (DEBUG_COLOR_MODE.length > 0) {
-      const mode = DEBUG_COLOR_MODE === 'dark'
-        ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
-        : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
-      context.getApplicationContext().setColorMode(mode)
     }
     this.downloadDir = context.filesDir + '/downloads'
     if (!fs.accessSync(this.downloadDir)) {
@@ -511,15 +469,28 @@ struct Index {
     return offset
   }
 
-  /** 返回键先退 web 历史，退不动才交给系统 */
+  /**
+   * 返回键。
+   *
+   * 三个层次：外部页面直接回应用（账号登录的授权页跳出去以后必须能回来，否则人就
+   * 困在浏览器里了）；应用内先退 web 历史；都退不动才交给系统。
+   *
+   * 光看 accessBackward 不够：初始导航时它也可能是 true，一退就退成空白页（实测整屏黑）。
+   */
   onBackPress(): boolean {
     if (!this.assetsReady) {
       return false
     }
     try {
       const url = this.controller.getUrl()
-      // 光看 accessBackward 不够：初始导航时它也可能是 true，一退就退成空白页（实测整屏黑）。
-      if (url.startsWith(APP_ORIGIN) && this.controller.accessBackward()) {
+      if (!url.startsWith(APP_ORIGIN)) {
+        // 放弃这次登录，回到首页
+        this.pendingVerifier = ''
+        this.pendingAuthorizeId = ''
+        this.controller.loadUrl(HOME_URL)
+        return true
+      }
+      if (this.controller.accessBackward()) {
         this.controller.backward()
         return true
       }
@@ -638,17 +609,6 @@ struct Index {
           })
           .onPageEnd((event) => {
             hilog.info(DOMAIN, TAG, 'page end: %{public}s', event.url)
-            if (DEBUG_API_KEY.length > 0 && !this.injected) {
-              this.injected = true
-              const script = "localStorage.setItem('" + API_KEY_STORAGE + "', '" + DEBUG_API_KEY + "')"
-              this.controller
-                .runJavaScript(script)
-                .then(() => this.controller.refresh())
-                .catch((error: Error) => {
-                  hilog.error(DOMAIN, TAG, 'inject failed: %{public}s', error.message)
-                })
-              return
-            }
             this.controller
               .runJavaScript(AUTH_TOKEN_PATCH)
               .catch((error: Error) => {
@@ -664,22 +624,6 @@ struct Index {
               .catch((error: Error) => {
                 hilog.warn(DOMAIN, TAG, 'picker patch failed: %{public}s', error.message)
               })
-            if (DEBUG_HASH.length > 0 && !this.navigated) {
-              this.navigated = true
-              this.controller.loadUrl(HOME_URL + DEBUG_HASH)
-              return
-            }
-            if (DEBUG_JS.length > 0 && !this.scriptRan) {
-              this.scriptRan = true
-              this.controller
-                .runJavaScript(DEBUG_JS)
-                .then((result) => {
-                  hilog.info(DOMAIN, TAG, 'debug js result: %{public}s', JSON.stringify(result))
-                })
-                .catch((error: Error) => {
-                  hilog.error(DOMAIN, TAG, 'debug js failed: %{public}s', error.message)
-                })
-            }
           })
           .onErrorReceive((event) => {
             if (event) {

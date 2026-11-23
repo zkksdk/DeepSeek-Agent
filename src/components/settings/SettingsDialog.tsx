@@ -62,6 +62,7 @@ import { Select } from '../base/Select.js'
 import { Switch } from '../base/Switch.js'
 import { showToast } from '../base/toastState.js'
 import { AccountField, ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
+import { AccountSetting } from './AccountSetting.js'
 import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
 import styles from './Settings.module.css'
 
@@ -75,6 +76,7 @@ export const SettingsDialog = () => {
 }
 
 const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode }[] = [
+  { value: 'account', label: 'settingsGroupAccount', icon: <IconDataOutline16 /> },
   {
     value: 'general',
     label: 'settingsGroupGeneral',
@@ -126,7 +128,14 @@ const SettingsContent = () => {
           ))}
         </div>
         <div role="tabpanel" className={styles.content}>
-          {section === 'general' ? (
+          {section === 'account' ? (
+            <>
+              <AccountField />
+              <ApiKeyField editor={apiKeyEditor} />
+              <AccountSetting />
+              {isMobile ? <ApiKeyConfirm editor={apiKeyEditor} /> : null}
+            </>
+          ) : section === 'general' ? (
             <>
               <ThemeSetting />
               <LocaleSetting />
@@ -160,8 +169,6 @@ const SettingsContent = () => {
             <WorkspaceSetting />
           ) : (
             <>
-              <AccountField />
-              <ApiKeyField editor={apiKeyEditor} />
               <ImportHistory historyImport={historyImport} disabled={historyBusy} />
               <ExportHistory disabled={historyBusy} />
               <SettingCell
