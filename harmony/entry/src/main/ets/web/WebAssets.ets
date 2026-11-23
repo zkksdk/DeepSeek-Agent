@@ -1,75 +1,66 @@
 /**
- * Web 产物装载。
+ * Web 产物访问。
  *
- * 为什么要有这一层：ArkWeb 的 onInterceptRequest 必须**同步**返回响应，
- * 而 rawfile 只能按已知名字同步读、不能列目录。所以启动时把 rawfile 里的
- * www 整份落到应用沙箱，之后拦截回调直接读文件系统，还能自己挂一层内存缓存。
+ * 为什么不落沙箱：第一版是把 rawfile 里的 www 整份拷到 filesDir 再读，
+ * 代价是首启多花约 2 秒（297 个文件 / 11.3 MB），而且磁盘上平白多一份。
+ * 实测 `getRawFileContentSync` 直接读 rawfile 完全够快——拦截回调本来就是
+ * 同步的，读完进内存缓存，同一个文件只读一次。
  *
- * 拷贝必须异步：实测同步拷 158 个文件 / 5.2 MB 会把生命周期卡住，系统判
- * LIFECYCLE_TIMEOUT（faultlogger 里就是这个 Reason）。改成 Promise 后首帧
- * 立刻出来，页面等拷贝完成再开始加载。
- *
- * 版本用资源清单的签名（条目数 + 内容哈希），清单不变就不重复拷贝。
+ * 清单（_assets.json）仍然要在构建期生成：rawfile 不能列目录，没有清单就
+ * 分不清"文件不存在"和"读失败"，而前者要用 index.html 兜底、后者不该兜底。
  */
 import { common } from '@kit.AbilityKit'
-import { fileIo as fs } from '@kit.CoreFileKit'
+import { resourceManager } from '@kit.LocalizationKit'
 import { util } from '@kit.ArkTS'
 
 const MANIFEST = 'www/_assets.json'
-const VERSION_FILE = 'www.version'
 
 export class WebAssets {
-  private static rootDir: string = ''
+  private static manager: resourceManager.ResourceManager | null = null
+  /** 清单里的相对路径集合，用来快速判断存在性 */
+  private static known: Set<string> = new Set<string>()
+  /** 读过一次就留在内存里，拦截回调不该反复走 IO */
   private static cache: Map<string, ArrayBuffer> = new Map<string, ArrayBuffer>()
 
-  /** 装载（或跳过）web 产物，返回沙箱内 www 目录的绝对路径 */
-  static async install(context: common.UIAbilityContext): Promise<string> {
-    if (WebAssets.rootDir.length > 0) {
-      return WebAssets.rootDir
+  /** 装载清单，返回给调用方看的标识 */
+  static install(context: common.UIAbilityContext): Promise<string> {
+    if (WebAssets.manager !== null) {
+      return Promise.resolve('rawfile:www')
     }
-    const base = context.filesDir
-    const root = base + '/www'
-    const raw = context.resourceManager.getRawFileContentSync(MANIFEST)
+    const manager = context.resourceManager
+    const raw = manager.getRawFileContentSync(MANIFEST)
     const list = JSON.parse(WebAssets.decode(raw)) as string[]
-    const version = WebAssets.signature(list)
-    const versionPath = base + '/' + VERSION_FILE
-    const installed = await WebAssets.readText(versionPath)
-    if (installed !== version) {
-      await WebAssets.materialize(context, root, list)
-      await WebAssets.writeText(versionPath, version)
-      WebAssets.cache.clear()
+    const known = new Set<string>()
+    for (const rel of list) {
+      known.add(rel)
     }
-    WebAssets.rootDir = root
-    return root
+    WebAssets.known = known
+    WebAssets.manager = manager
+    return Promise.resolve('rawfile:www')
   }
 
   /** 读一份产物；不存在返回 null */
   static read(rel: string): ArrayBuffer | null {
-    if (WebAssets.rootDir.length === 0) {
+    const manager = WebAssets.manager
+    if (manager === null) {
       return null
     }
     const safe = WebAssets.sanitize(rel)
-    if (safe === null) {
+    if (safe === null || !WebAssets.known.has(safe)) {
       return null
     }
     const cached = WebAssets.cache.get(safe)
     if (cached !== undefined) {
       return cached
     }
-    const full = WebAssets.rootDir + '/' + safe
-    if (!fs.accessSync(full)) {
+    try {
+      const bytes = manager.getRawFileContentSync('www/' + safe)
+      const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      WebAssets.cache.set(safe, buf)
+      return buf
+    } catch (error) {
       return null
     }
-    const stat = fs.statSync(full)
-    const buf = new ArrayBuffer(stat.size)
-    const file = fs.openSync(full, fs.OpenMode.READ_ONLY)
-    try {
-      fs.readSync(file.fd, buf)
-    } finally {
-      fs.closeSync(file)
-    }
-    WebAssets.cache.set(safe, buf)
-    return buf
   }
 
   /** 按后缀猜 Content-Type；猜不出就走八位字节流 */
@@ -142,88 +133,8 @@ export class WebAssets {
     return decodeURIComponent(path)
   }
 
-  // ---------- 内部 ----------
-
-  private static async materialize(
-    context: common.UIAbilityContext,
-    root: string,
-    list: string[]
-  ): Promise<void> {
-    if (!fs.accessSync(root)) {
-      fs.mkdirSync(root, true)
-    }
-    for (const rel of list) {
-      const bytes = context.resourceManager.getRawFileContentSync('www/' + rel)
-      const target = root + '/' + rel
-      WebAssets.ensureDir(target)
-      await WebAssets.writeBytes(target, bytes)
-    }
-  }
-
-  private static ensureDir(filePath: string): void {
-    const at = filePath.lastIndexOf('/')
-    if (at <= 0) {
-      return
-    }
-    const dir = filePath.slice(0, at)
-    if (!fs.accessSync(dir)) {
-      fs.mkdirSync(dir, true)
-    }
-  }
-
-  private static async writeBytes(target: string, bytes: Uint8Array): Promise<void> {
-    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-    const file = await fs.open(
-      target,
-      fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
-    )
-    try {
-      await fs.write(file.fd, buf)
-    } finally {
-      await fs.close(file)
-    }
-  }
-
-  private static async writeText(target: string, text: string): Promise<void> {
-    const file = await fs.open(
-      target,
-      fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
-    )
-    try {
-      await fs.write(file.fd, text)
-    } finally {
-      await fs.close(file)
-    }
-  }
-
-  private static async readText(target: string): Promise<string> {
-    if (!fs.accessSync(target)) {
-      return ''
-    }
-    const stat = fs.statSync(target)
-    const buf = new ArrayBuffer(stat.size)
-    const file = await fs.open(target, fs.OpenMode.READ_ONLY)
-    try {
-      await fs.read(file.fd, buf)
-    } finally {
-      await fs.close(file)
-    }
-    return WebAssets.decode(new Uint8Array(buf))
-  }
-
   private static decode(bytes: Uint8Array): string {
     const decoder = util.TextDecoder.create('utf-8')
     return decoder.decodeWithStream(bytes, { stream: false })
-  }
-
-  /** 清单签名：条目数 + 路径哈希。清单变了就重装。 */
-  private static signature(list: string[]): string {
-    let hash = 5381
-    for (const item of list) {
-      for (let i = 0; i < item.length; i += 1) {
-        hash = ((hash * 33) ^ item.charCodeAt(i)) >>> 0
-      }
-    }
-    return list.length.toString() + '-' + hash.toString(16)
   }
 }

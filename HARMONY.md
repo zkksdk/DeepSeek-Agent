@@ -63,14 +63,17 @@ harmony/
     module.json5                        权限：INTERNET、定位、麦克风
     ets/entryability/EntryAbility.ets   启动、加载首页、申请运行时权限
     ets/pages/Index.ets                 ArkWeb 容器 + 请求拦截 + 权限放行 + 返回键
-    ets/web/WebAssets.ets               把 rawfile/www 装进沙箱并按需读
+    ets/web/WebAssets.ets               按需从 rawfile 读产物并内存缓存
     resources/rawfile/www/              构建产物（不入库，见 .gitignore）
 scripts/sync-harmony-assets.mjs         拷 dist 并生成 _assets.json
 ```
 
 `_assets.json` 是构建期生成的资源清单。必须这么做：`onInterceptRequest` 要求**同步**返回响应，
-而 rawfile 只能按已知文件名读、不能列目录，所以启动时按清单把文件落到 `filesDir/www`，
-拦截时同步读沙箱——顺便还能挂一层内存缓存。
+而 rawfile 只能按已知文件名读、**不能列目录**，没有清单就分不清"文件不存在"（要用
+`index.html` 兜底）和"读失败"（不该兜底）。
+
+早期版本是先把整份产物拷进 `filesDir` 再读，实测首启多花约 1.1 秒、磁盘上还多一份 11.3 MB。
+现在直接 `getRawFileContentSync` 读 rawfile，命中过的进内存缓存，同一个文件只读一次。
 
 ## 实测记录
 
@@ -80,7 +83,7 @@ scripts/sync-harmony-assets.mjs         拷 dist 并生成 _assets.json
 | --- | --- |
 | 安装未签名 HAP | 通过（`hdc install`，系统没拦签名） |
 | 首屏渲染 | 通过，HTML/CSS/JS 全部经拦截器返回 |
-| 资源落地 | 通过，297 个文件 / 11.3 MB 写进 `haps/entry/files/www` |
+| 资源读取 | 通过，297 个文件 / 11.3 MB 直接从 rawfile 读，`filesDir` 不再留副本 |
 | 定位 + 麦克风权限 | 两个弹窗都正常，授权结果 `[0,0,0]` |
 | API Key 写入与掩码显示 | 通过 |
 | SSE 对话 | 通过，发一句英文正常收到回复并自动生成标题 |
@@ -93,6 +96,9 @@ scripts/sync-harmony-assets.mjs         拷 dist 并生成 _assets.json
 | Monaco diff | 加载中提示正常显示（2.7 MB chunk 经拦截器拿到） |
 | 工具调用 | 通过，问北京天气，真实调用天气工具拉到 Open-Meteo 数据并渲染成表格 |
 | 多轮用量统计 | 通过，「输入 22.1k tok / 输出 254 tok / 首字 6.34s / 缓存 97.9%」 |
+| 下载落盘 | 通过，blob 下载 → 系统保存面板 → 文件进 `/storage/media/100/local/files/Docs` |
+| 返回键 | 通过，首页按返回回桌面，不再黑屏 |
+| 冷启动 | 首启 3.43 s、有缓存 2.6 s（`onCreate` → `page end`） |
 
 ## 实测踩到的坑
 
