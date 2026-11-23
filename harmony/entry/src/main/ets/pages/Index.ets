@@ -112,7 +112,7 @@ const API_KEY_STORAGE: string = 'chat-demo:api-key'
 const DEBUG_API_KEY: string = ''
 
 /** 测试用：非空时页面加载完跳到该 hash（例如 '#/settings/data'）。验证完置空。 */
-const DEBUG_HASH: string = '#/settings/general'
+const DEBUG_HASH: string = ''
 
 /**
  * 测试用：非空时页面加载完执行一次这段 JS。验证完必须置空。
@@ -176,6 +176,14 @@ class ShellBridge {
   constructor(context: common.UIAbilityContext) {
     this.context = context
   }
+
+  /** 设置页点「账号登录」时调用 */
+  login(): void {
+    this.onLogin?.()
+  }
+
+  /** 由 Index 注入 */
+  onLogin: (() => void) | undefined = undefined
 
   /** 页面 hash 变化时报给原生，用来判断是否在设置页 */
   onHash(hash: string): void {
@@ -243,6 +251,9 @@ struct Index {
     this.bridge = new ShellBridge(context)
     this.bridge.onHashChange = (hash: string) => {
       this.currentHash = hash
+    }
+    this.bridge.onLogin = () => {
+      this.startAccountLogin()
     }
     if (DEBUG_ORIENTATION.length > 0) {
       window.getLastWindow(context).then((win) => {
@@ -589,7 +600,7 @@ struct Index {
   }
 
   build() {
-    Stack({ alignContent: Alignment.TopEnd }) {
+    Stack() {
       if (this.assetsReady) {
         Web({ src: HOME_URL, controller: this.controller })
           .width('100%')
@@ -611,7 +622,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash'],
+            methodList: ['notify', 'onHash', 'login'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
@@ -682,21 +693,6 @@ struct Index {
             }
           })
 
-        // 设置页里的账号登录入口。
-        // 按钮只在设置页出现，位置避开顶部状态栏。
-        if (this.currentHash.indexOf('#/settings') >= 0) {
-          Button('账号登录 DeepSeek')
-            .fontSize(13)
-            .height(34)
-            .padding({ left: 14, right: 14 })
-            .backgroundColor('#3D6DFF')
-            .fontColor('#FFFFFF')
-            .borderRadius(17)
-            .margin({ right: 10, top: 38 })
-            .onClick(() => {
-              this.startAccountLogin()
-            })
-        }
       } else {
         Column({ space: 16 }) {
           LoadingProgress().width(40).height(40)

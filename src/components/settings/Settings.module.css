@@ -734,3 +734,38 @@ body[data-ds-dark-theme] .slider input[type='range'] {
   width: 58px;
   text-align: left;
 }
+
+
+/* ── DeepSeek 账号 ─────────────────────────────────────── */
+
+.accountLogin {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent, #3d6dff);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.accountLogin:hover {
+  filter: brightness(1.08);
+}
+
+.accountState {
+  font-size: 13px;
+  color: var(--text-secondary, #8a8f99);
+}
+
+.accountDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  display: inline-block;
+}
+
+.accountHint {
+  font-size: 12px;
+  color: var(--text-tertiary, #6b7280);
+}

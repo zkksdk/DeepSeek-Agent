@@ -7,6 +7,14 @@ import { useApiKeyForm } from './useApiKeyForm.js'
 import { useTranslate } from '../../i18n/index.js'
 import styles from './Settings.module.css'
 
+/** 鸿蒙壳注入的原生桥；浏览器里没有 */
+declare global {
+  interface ShellWindow extends Window {
+    __DS_SHELL__?: { login: () => void; notify: (title: string, body: string) => Promise<boolean> }
+  }
+}
+type ShellWindow = Window & { __DS_SHELL__?: { login: () => void } }
+
 /** API Key 的编辑状态：输入框与移动端底部的「确定」按钮共用 */
 export const useApiKeyEditor = () => {
   const apiKey = useSettings((state) => state.apiKey)
@@ -97,4 +105,42 @@ export const ApiKeyConfirm = ({ editor: { showInput, form } }: { editor: ApiKeyE
       {form.verifying ? t('apiKeyVerifying') : t('confirm')}
     </button>
   ) : null
+}
+
+/**
+ * DeepSeek 账号：手机壳里可以用账号登录，换来的 token 以 `dsh:` 前缀存进同一个
+ * apiKey 字段 —— 壳里会把它改写成 `x-dsh-auth-token` 请求头。
+ *
+ * 未登录时显示登录入口；已登录时只报状态。浏览器里没有原生桥，所以直说不可用，
+ * 而不是给一个按了没反应的按钮。
+ */
+export const AccountField = () => {
+  const t = useTranslate()
+  const apiKey = useSettings((state) => state.apiKey)
+  const shell = typeof window === 'undefined' ? undefined : (window as ShellWindow).__DS_SHELL__
+  const signedIn = apiKey.startsWith('dsh:')
+
+  return (
+    <div className={styles.cell}>
+      <div className={styles.apiKey}>
+        <div className={styles.label}>{t('accountLabel')}</div>
+        {signedIn ? (
+          <div className={styles.apiKeySaved}>
+            <span className={styles.accountState}>{t('accountSignedIn')}</span>
+            <span className={styles.accountDot} aria-hidden="true" />
+          </div>
+        ) : shell ? (
+          <button
+            type="button"
+            className={styles.accountLogin}
+            onClick={() => shell.login()}
+          >
+            {t('accountSignIn')}
+          </button>
+        ) : (
+          <div className={styles.accountHint}>{t('accountShellOnly')}</div>
+        )}
+      </div>
+    </div>
+  )
 }
