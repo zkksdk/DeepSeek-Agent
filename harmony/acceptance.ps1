@@ -119,6 +119,10 @@ if (-not $SkipInstall) {
 }
 
 # --- 1. 冷启动 ---
+# 两种模式都先杀一次：-SkipInstall 只是不重装，仍要看到本次运行的日志，
+# 否则页面加载那一项只能跳过，每次不重装的回归就少一条。
+Hdc shell aa force-stop $Bundle | Out-Null
+Start-Sleep -Seconds 2
 $StartedAt = (Get-Date).AddSeconds(-10)
 Hdc shell aa start -a EntryAbility -b $Bundle | Out-Null
 Start-Sleep -Seconds 8
@@ -143,13 +147,8 @@ Snap "01-launch" | Out-Null
 $pidOut = Hdc shell pidof $Bundle
 Record "应用启动（进程存活）" ($pidOut -match "^\s*\d+\s*$") $pidOut.Trim()
 
-if ($SkipInstall) {
-  # 没有重新启动，hilog 里不会有本次的 page end，这一项无意义
-  Write-Host "[SKIP] 页面加载（走拦截器）- -SkipInstall 模式跳过"
-} else {
-  $log = Hdc shell "hilog -x"
-  Record "页面加载（走拦截器）" ($log -match "page end: https://app.local") ""
-}
+$log = Hdc shell "hilog -x"
+Record "页面加载（走拦截器）" ($log -match "page end: https://app.local") ""
 
 # --- 2. 生命周期没有被卡住（只看本次运行期间的记录） ---
 $fault = Hdc shell "ls -t /data/log/faultlog/faultlogger/ 2>/dev/null"
