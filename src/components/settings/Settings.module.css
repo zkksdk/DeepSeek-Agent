@@ -440,3 +440,51 @@
     max-width: 100%;
   }
 }
+
+.fieldInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.toolRow {
+  align-items: flex-start;
+}
+
+.toolName {
+  font-family: var(--ds-font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.toolActions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.skillTextarea {
+  width: 100%;
+  min-height: 96px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: inherit;
+  font-family: var(--ds-font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  resize: vertical;
+}
+
+.skillTextarea:focus {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
+}

@@ -1,7 +1,12 @@
 import { create } from 'zustand'
 import { createId } from '../../utils/id.js'
 import { ApiError, streamMessage } from '../api/client.js'
-import type { ChatModel, CreateMessageRequest } from '../api/types.js'
+import type {
+  AssistantBlockParam,
+  ChatModel,
+  CreateMessageRequest,
+  MessageParam,
+} from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
 import {
   cancelUpload,
@@ -11,6 +16,11 @@ import {
   useUploads,
 } from '../attachments.js'
 import { useSettings } from '../settings.js'
+import { AGENT_TOOLS } from '../agent/tools.js'
+import { collectExternalTools, runAnyTool } from '../agent/registry.js'
+import { buildMemoryPrompt } from '../agent/memory.js'
+import { extractMemories } from '../agent/memoryExtract.js'
+import { useWorkspaces } from './workspaces.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import * as db from './db.js'
 import {
@@ -38,10 +48,14 @@ import {
   type UserMessage,
 } from './types.js'
 
-/** deepseek-flash 同时支持深度思考与图片输入 */
-const MODEL: ChatModel = 'deepseek-flash'
+/** 当前生效模型：优先使用设置中的自定义模型，未设置时回落到 deepseek-flash */
+const currentModel = (): ChatModel => useSettings.getState().model || 'deepseek-flash'
 /** 所有生成请求统一携带的助手身份说明 */
 const SYSTEM_PROMPT = '该助手为DeepSeek，由深度求索公司创造。'
+/** 智能体模式：在基础提示词上补充工具使用约定 */
+const AGENT_SYSTEM_PROMPT = `${SYSTEM_PROMPT} 你可以调用提供的工具来获取信息或完成计算。需要时直接调用工具，不要编造工具结果；拿到工具结果后再继续推理并给出最终回答。`
+/** 单轮提问内最多执行的工具往返次数 */
+const MAX_AGENT_TOOL_ROUNDS = 6
 /** 保留最近打开的详情；当前会话、生成中及尚未成功保存的会话不淘汰。 */
 const SESSION_CACHE_LIMIT = 5
 /** 安全审核固定开启，所有请求都走扩展模式 */
@@ -266,7 +280,7 @@ const createReply = (): AssistantMessage => {
     id: createId(),
     role: 'assistant',
     createdAt: Date.now(),
-    model: MODEL,
+    model: currentModel(),
     thinking,
     search,
     prefix: true,
@@ -574,6 +588,7 @@ export const sendMessage = (targetSessionId: string | null) => {
       title: '',
       createdAt: now,
       updatedAt: now,
+      workspaceId: useWorkspaces.getState().activeId,
       messages: [],
       rootMessageId: null,
     }
@@ -717,7 +732,7 @@ export const continueReply = (sessionId: string, messageId: string) => {
   const reply: AssistantMessage = {
     ...previous,
     // 未记录请求配置的回复，续写时使用默认模型和当前开关。
-    model: previous.model ?? MODEL,
+    model: previous.model ?? currentModel(),
     thinking: previous.thinking ?? thinking,
     search: previous.search ?? search,
     status: 'pending',
@@ -991,6 +1006,9 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
   set((state) => ({ streaming: { ...state.streaming, [sessionId]: controller } }))
   let reply = initial
   let frame = 0
+  /** 智能体模式下累积的工具往返消息（包含 assistant 的 tool_use 与 user 的 tool_result） */
+  let extraMessages: MessageParam[] = []
+  let toolRounds = 0
   const flush = () => {
     cancelAnimationFrame(frame)
     frame = 0
@@ -1013,27 +1031,46 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
         reply = { ...reply, latestReminder }
         updateReply(sessionId, reply)
         persist(sessionId)
-        const messages = toRequestMessages(
-          prepared.history,
-          prepared.question,
-          prepared.prefix,
-          initial.thinking ?? false,
-          latestReminder
+        const messages = [
+          ...toRequestMessages(
+            prepared.history,
+            prepared.question,
+            prepared.prefix,
+            initial.thinking ?? false,
+            latestReminder
+          ),
+          ...extraMessages,
+        ]
+        const agentMode = useSettings.getState().agentMode
+        const baseSystem = agentMode ? AGENT_SYSTEM_PROMPT : SYSTEM_PROMPT
+        const systemPrompt = `${baseSystem}${buildMemoryPrompt(
+          prepared.question.content,
+          useWorkspaces.getState().activeId,
+          useSettings.getState().memorySpark
+        )}`
+        const toolOverrides = useSettings.getState().toolOverrides
+        const enabledAgentTools = AGENT_TOOLS.filter(
+          (tool) => toolOverrides[tool.name] !== false
         )
+        const externalTools = agentMode ? await collectExternalTools() : []
         const events = streamMessage(
           useSettings.getState().apiKey ?? '',
           {
-            model: initial.model ?? MODEL,
-            system: SYSTEM_PROMPT,
+            model: initial.model ?? currentModel(),
+            system: systemPrompt,
             messages,
             thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
             safety_check: SAFETY_CHECK,
-            tools: serverTools(initial.search ?? false),
+            tools: agentMode
+              ? [...serverTools(initial.search ?? false), ...enabledAgentTools, ...externalTools]
+              : serverTools(initial.search ?? false),
             ...(titleRequests.has(controller) ? { title: { enabled: true } } : {}),
           },
           controller.signal
         )
         const blockIndexes = new Map<number, number>()
+        /** 本轮开始时的块数，便于只回传本轮真实输出 */
+        const roundStartIndex = reply.blocks.length
         for await (const event of events) {
           receivedContent ||= event.type === 'content_block_start'
           if (
@@ -1055,7 +1092,97 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             frame ||= requestAnimationFrame(flush)
           }
         }
+        // 智能体模式：模型请求调用本地工具时，执行后回传结果并继续推理
+        const toolCalls = reply.toolCalls
+        if (
+          agentMode &&
+          reply.stopReason === 'tool_use' &&
+          toolCalls?.length &&
+          toolRounds < MAX_AGENT_TOOL_ROUNDS &&
+          !controller.signal.aborted
+        ) {
+          toolRounds += 1
+          const results = await Promise.all(
+            toolCalls.map(async (call) => {
+              const startedAt = Date.now()
+              const result = await runAnyTool(call.name, call.input, controller.signal)
+              return { ...result, ms: Date.now() - startedAt }
+            })
+          )
+          if (controller.signal.aborted) {
+            reply = settleReply(reply, 'stopped', Date.now())
+            break
+          }
+          const shown = results
+            .map((result) => `${result.isError ? '\u274c' : '\u2705'} ${result.content}`)
+            .join('\n\n')
+          // 按本轮模型真实输出（思考及其签名 + 正文）构造 assistant 回传内容，
+          // 保留 thinking 签名才能让模型在带工具的多轮里继续输出思考链。
+          const priorContent: AssistantBlockParam[] = []
+          for (const block of reply.blocks.slice(roundStartIndex)) {
+            if (block.type === 'thinking' && block.thinking.trim() && block.signature) {
+              priorContent.push({
+                type: 'thinking',
+                thinking: block.thinking,
+                signature: block.signature,
+              })
+            } else if (block.type === 'text' && !block.displayOnly && block.text.trim()) {
+              priorContent.push({ type: 'text', text: block.text })
+            }
+          }
+          const traceSteps = toolCalls.map((call, index) => ({
+            id: `${call.id}-${index}`,
+            kind: 'tool' as const,
+            name: call.name,
+            input: JSON.stringify(call.input ?? {}).slice(0, 300),
+            output: results[index].content.slice(0, 500),
+            isError: results[index].isError,
+            ms: results[index].ms,
+            at: Date.now(),
+          }))
+          reply = {
+            ...reply,
+            blocks: [...reply.blocks, { type: 'text', text: `\n${shown}\n\n`, displayOnly: true }],
+            toolCalls: undefined,
+            stopReason: undefined,
+            trace: [...(reply.trace ?? []), ...traceSteps],
+          }
+          updateReply(sessionId, reply)
+          persist(sessionId)
+          extraMessages = [
+            ...extraMessages,
+            {
+              role: 'assistant',
+              content: [
+                ...priorContent,
+                ...toolCalls.map((call) => ({
+                  type: 'tool_use' as const,
+                  id: call.id,
+                  name: call.name,
+                  input: call.input,
+                })),
+              ],
+            },
+            {
+              role: 'user',
+              content: toolCalls.map((call, index) => ({
+                type: 'tool_result' as const,
+                tool_use_id: call.id,
+                content: results[index].content,
+                is_error: results[index].isError,
+              })),
+            },
+          ]
+          continue
+        }
         reply = settleReply(reply, 'done', Date.now())
+        // 每轮结束后自动整理记忆（异步，不阻塞收尾；可用设置关闭）
+        const assistantText = reply.blocks
+          .flatMap((block) =>
+            block.type === 'text' && !block.displayOnly && !block.isTemplate ? [block.text] : []
+          )
+          .join('\n')
+        void extractMemories(request.question.content, assistantText, controller.signal)
         break
       } catch (error) {
         if (controller.signal.aborted) {

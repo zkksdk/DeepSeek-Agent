@@ -4,10 +4,11 @@ import {
   IconGlobeLanguageOutline14,
   IconPaperclipOutline16,
   IconSendOutline16,
+  IconSettingsOutline16,
   IconStopFill16,
   IconThinkOutline14,
 } from '../base/icons.js'
-import { setSearch, setThinking, useSettings } from '../../services/settings.js'
+import { setAgentMode, setSearch, setThinking, useSettings } from '../../services/settings.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { sendMessage, stopReply, useChatStore } from '../../services/chat/store.js'
 import {
@@ -23,7 +24,7 @@ import {
 import { stopReadAloud } from '../../services/speech/readAloud.js'
 import { IconButton } from '../base/IconButton.js'
 import { Tooltip } from '../base/Tooltip.js'
-import { ensureApiKey } from '../settings/settingsDialogState.js'
+import { ensureApiKey, openSettings } from '../settings/settingsDialogState.js'
 import { DragMask, useFileDrop } from './DragMask.js'
 import { showToast } from '../base/toastState.js'
 import { ACCEPT, useUploads } from '../../services/attachments.js'
@@ -50,6 +51,8 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     (state) => sessionId !== null && Object.hasOwn(state.streaming, sessionId)
   )
   const thinking = useSettings((state) => state.thinking)
+  const agentMode = useSettings((state) => state.agentMode)
+  const model = useSettings((state) => state.model)
   const importingHistory = useChatStore((state) => state.importingHistory)
   const isMobile = useIsMobile()
   const search = useSettings((state) => state.search)
@@ -226,8 +229,32 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               <span className={styles.toggleLabel}>{t('search')}</span>
             </button>
           </Tooltip>
+          <Tooltip content={t('agentModeDescription')}>
+            <button
+              type="button"
+              className={clsx(styles.toggle, agentMode && styles.selected)}
+              aria-label={t('agentModeLabel')}
+              aria-pressed={agentMode}
+              onClick={() => setAgentMode(!agentMode)}
+            >
+              <IconSettingsOutline16 />
+              <span className={styles.toggleLabel}>{t('agentModeLabel')}</span>
+            </button>
+          </Tooltip>
         </div>
         <div className={styles.right}>
+          {isMobile ? null : (
+            <Tooltip content={t('modelSwitchTooltip')}>
+              <button
+                type="button"
+                className={styles.modelPill}
+                aria-label={t('modelSwitchTooltip')}
+                onClick={() => openSettings('general')}
+              >
+                {model || 'deepseek-flash'}
+              </button>
+            </Tooltip>
+          )}
           <VoiceButton
             status={voice.status}
             disabled={!voice.available}

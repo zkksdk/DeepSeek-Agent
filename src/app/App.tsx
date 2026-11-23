@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslate } from '../i18n/index.js'
-import { useSettings } from '../services/settings.js'
+import { useSettings, hydrateApiKey } from '../services/settings.js'
 import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
 import {
   bindChatPersistence,
@@ -17,6 +17,7 @@ import { Welcome } from '../components/session/Welcome.js'
 import { ensureApiKey } from '../components/settings/settingsDialogState.js'
 import { SettingsDialog } from '../components/settings/SettingsDialog.js'
 import { Toast } from '../components/base/Toast.js'
+import { PromptDialog } from '../components/base/PromptDialog.js'
 import { showToast } from '../components/base/toastState.js'
 import { onUploadNotice } from '../services/attachments.js'
 import { Button } from '../components/base/Button.js'
@@ -68,9 +69,12 @@ export const App = () => {
   useEffect(closeMobileSider, [activeId, isMobile])
 
   useEffect(() => {
-    void initChat()
-    // 首次打开先在设置里输入 API Key
-    ensureApiKey()
+    // 先校准凭证（原生壳下为异步钥匙串），再初始化会话与首次引导
+    void (async () => {
+      await hydrateApiKey()
+      void initChat()
+      ensureApiKey()
+    })()
   }, [])
 
   return (
@@ -133,6 +137,7 @@ export const App = () => {
         <SearchPanel />
       </div>
       <SettingsDialog />
+      <PromptDialog />
       <Toast />
     </>
   )

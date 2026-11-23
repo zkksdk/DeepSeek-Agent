@@ -330,3 +330,25 @@
     cursor: not-allowed;
   }
 }
+
+.modelPill {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 26px;
+  cursor: pointer;
+  transition: border-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.modelPill:hover {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useIsMobile } from '../../app/viewport.js'
+import { useTranslate } from '../../i18n/index.js'
 import {
   buildMessageVersions,
   getVisibleMessages,
@@ -43,6 +44,7 @@ export const MessageList = ({
   footer: React.ReactNode
 }) => {
   const isMobile = useIsMobile()
+  const t = useTranslate()
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const stickyRef = useRef(true)
@@ -60,6 +62,7 @@ export const MessageList = ({
     setPreviousVersions(versions)
   }
   const lastMessageId = messages.at(-1)?.id
+  const [atBottom, setAtBottom] = useState(true)
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
     if (el && stickyRef.current) {
@@ -133,6 +136,7 @@ export const MessageList = ({
       } else if (el.scrollTop < scrollTopRef.current) {
         stickyRef.current = false
       }
+      setAtBottom(nearBottom)
       scrollTopRef.current = el.scrollTop
     }
     el.addEventListener('scroll', onScroll, { passive: true })
@@ -174,6 +178,24 @@ export const MessageList = ({
             )}
           </div>
         </div>
+        {!atBottom ? (
+          <button
+            type="button"
+            className={styles.jumpBottom}
+            aria-label={t('scrollToLatest')}
+            title={t('scrollToLatest')}
+            onClick={() => {
+              stickyRef.current = true
+              const el = scrollRef.current
+              if (el) {
+                el.scrollTop = el.scrollHeight
+                setAtBottom(true)
+              }
+            }}
+          >
+            ↓
+          </button>
+        ) : null}
         {footer}
       </div>
     </ScrollToBottomContext.Provider>

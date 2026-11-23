@@ -137,3 +137,13 @@
     --search-row-site-logo-color: var(--dsw-alias-interactive-bg-hover);
   }
 }
+
+.time {
+  margin-right: auto;
+  align-self: center;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+  opacity: 0.7;
+  user-select: none;
+}

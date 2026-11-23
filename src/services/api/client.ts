@@ -1,3 +1,4 @@
+import { getApiOrigin } from './runtimeConfig.js'
 import { translate, type TranslationMessage } from '../../i18n/index.js'
 import { resizeUploadImage } from '../../utils/resizeUploadImage.js'
 import { readMessageEvent } from './parseEvent.js'
@@ -10,10 +11,10 @@ import type {
   MessageStreamEvent,
 } from './types.js'
 
-/** 构建期 API 地址，默认 https://api.deepseek.com；本地开发支持开发服务器代理 */
+/** 构建期默认 API 地址（https://api.deepseek.com）；实际请求按设置优先使用自定义地址 */
 export const API_ORIGIN = __API_ORIGIN__
-/** Anthropic 兼容接口的前缀 */
-const ANTHROPIC_BASE_URL = `${API_ORIGIN}/anthropic/v1`
+/** Anthropic 兼容接口的前缀（运行时解析，兼容任意 Anthropic 兼容服务/聚合网关） */
+const anthropicBaseUrl = () => `${getApiOrigin()}/anthropic/v1`
 /** 引用 Files API 上传的图片、调用 Anthropic 兼容 Files API 时必须携带 */
 const FILES_BETA = 'files-api-2025-04-14'
 
@@ -92,11 +93,48 @@ const anthropicHeaders = (apiKey: string, beta: boolean): Record<string, string>
 
 /** 用 GET /models 校验 API Key（不产生费用） */
 export const verifyApiKey = async (apiKey: string, signal?: AbortSignal): Promise<void> => {
-  await request(`${API_ORIGIN}/models`, {
+  await request(`${getApiOrigin()}/models`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${apiKey}` },
     signal,
   })
+}
+
+/**
+ * 获取服务端可用模型列表（GET /models，不产生费用）。
+ * 兼容 OpenAI 风格的 { data: [{ id }] } 与直接数组/字符串数组。
+ */
+export const listModels = async (apiKey: string, signal?: AbortSignal): Promise<string[]> => {
+  const response = await request(`${getApiOrigin()}/models`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal,
+  })
+  const body = (await response.json()) as unknown
+  const rawItems: unknown[] = Array.isArray(body)
+    ? body
+    : typeof body === 'object' && body !== null && Array.isArray((body as { data?: unknown }).data)
+      ? ((body as { data: unknown[] }).data)
+      : []
+  const ids = rawItems
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item
+      }
+      if (typeof item === 'object' && item !== null) {
+        const id = (item as { id?: unknown }).id
+        if (typeof id === 'string') {
+          return id
+        }
+        const name = (item as { name?: unknown }).name
+        if (typeof name === 'string') {
+          return name
+        }
+      }
+      return null
+    })
+    .filter((id): id is string => typeof id === 'string' && id.trim() !== '')
+  return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b))
 }
 
 /**
@@ -114,7 +152,7 @@ export const uploadFile = async (
     form.append('purpose', purpose)
   }
   form.append('file', purpose === null ? await resizeUploadImage(file, signal) : file)
-  const response = await request(`${ANTHROPIC_BASE_URL}/files`, {
+  const response = await request(`${anthropicBaseUrl()}/files`, {
     method: 'POST',
     headers: anthropicHeaders(apiKey, true),
     body: form,
@@ -125,7 +163,7 @@ export const uploadFile = async (
 
 /** DELETE /anthropic/v1/files/{file_id} */
 export const deleteFile = async (apiKey: string, fileId: string): Promise<void> => {
-  await request(`${ANTHROPIC_BASE_URL}/files/${encodeURIComponent(fileId)}`, {
+  await request(`${anthropicBaseUrl()}/files/${encodeURIComponent(fileId)}`, {
     method: 'DELETE',
     headers: anthropicHeaders(apiKey, true),
   })
@@ -147,7 +185,7 @@ export async function* streamMessage(
   body: CreateMessageRequest,
   signal: AbortSignal
 ): AsyncGenerator<MessageStreamEvent> {
-  const response = await request(`${ANTHROPIC_BASE_URL}/messages`, {
+  const response = await request(`${anthropicBaseUrl()}/messages`, {
     method: 'POST',
     headers: {
       ...anthropicHeaders(apiKey, hasFile(body)),

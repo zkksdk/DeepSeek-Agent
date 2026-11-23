@@ -245,3 +245,33 @@
     line-height: 22px;
   }
 }
+
+.workspace {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.workspaceSelect {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspaceAdd {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.workspaceAdd:hover {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+}

@@ -102,3 +102,13 @@
   gap: 8px;
   margin: 6px 10px 10px;
 }
+
+.time {
+  margin-right: auto;
+  align-self: center;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+  opacity: 0.7;
+  user-select: none;
+}

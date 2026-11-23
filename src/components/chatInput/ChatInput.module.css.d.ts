@@ -20,6 +20,7 @@ declare const styles: {
   readonly "right": string;
   readonly "sendButton": string;
   readonly "disabled": string;
+  readonly "modelPill": string;
 };
 export = styles;
 

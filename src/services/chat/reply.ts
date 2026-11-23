@@ -82,20 +82,62 @@ export const applyEvent = (
       return { ...next, usage: event.message.usage ?? next.usage }
     case 'content_block_start': {
       blockIndexes.delete(event.index)
+      // 客户端工具调用：保存原始调用（用于执行与回传），并用一段文本向用户展示
+      if (event.content_block.type === 'tool_use') {
+        const call = event.content_block
+        const record = {
+          id: call.id,
+          name: call.name,
+          input: call.input ?? {},
+          raw: '',
+          index: event.index,
+        }
+        return {
+          ...next,
+          prefix: false,
+          toolCalls: [...(next.toolCalls ?? []), record],
+          blocks: [
+            ...next.blocks,
+            {
+              type: 'text',
+              text: `\n\n\ud83d\udd27 **\u8c03\u7528\u5de5\u5177** \`${call.name}\`\n`,
+              displayOnly: true,
+            },
+          ],
+        }
+      }
       const block = toReplyBlock(event.content_block, now)
       if (!block) {
-        // 客户端工具内容不保存；未完成的工具往返也不能作为续写前缀。
-        return event.content_block.type === 'tool_use' ? { ...next, prefix: false } : next
+        return next
       }
       blockIndexes.set(event.index, next.blocks.length)
       return { ...next, blocks: [...next.blocks, block] }
     }
     case 'content_block_delta': {
+      const { delta } = event
+      // 工具参数以增量 JSON 下发，累积后尝试解析出完整 input
+      if (delta.type === 'input_json_delta') {
+        const calls = next.toolCalls
+        const at = calls?.findIndex((call) => call.index === event.index) ?? -1
+        if (!calls || at < 0) {
+          return next
+        }
+        const current = calls[at]
+        const raw = (current.raw ?? '') + delta.partial_json
+        let input = current.input
+        try {
+          input = JSON.parse(raw)
+        } catch {
+          // 还没收完，继续累积
+        }
+        const updated = [...calls]
+        updated[at] = { ...current, raw, input }
+        return { ...next, toolCalls: updated }
+      }
       const index = blockIndexes.get(event.index)
       if (index === undefined) {
         return next
       }
-      const { delta } = event
       return updateBlock(next, index, (block) => {
         if (block.type === 'text' && delta.type === 'text_delta') {
           return { ...block, text: block.text + delta.text }
@@ -245,6 +287,10 @@ const toAssistantParam = (
       continue
     }
     if (block.type === 'text') {
+      // 工具过程展示文本不参与上下文
+      if (block.displayOnly) {
+        continue
+      }
       if (text) {
         text.text += block.text
       } else {

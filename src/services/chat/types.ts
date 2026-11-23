@@ -62,6 +62,8 @@ export type TextPart = {
   citations?: TextCitation[]
   /** 服务端提示文案，仅用于展示，不作为模型回答参与上下文或续写。 */
   isTemplate?: boolean
+  /** 客户端工具过程的展示文本：渲染给用户看，但不回传给模型 */
+  displayOnly?: boolean
 }
 
 /** 服务端工具调用与结果块按协议原样保存；历史请求只回传 read_link 调用与结果 */
@@ -90,6 +92,10 @@ export type AssistantMessage = MessageBranch & {
   status: ReplyStatus
   /** 可识别的内容块按接收顺序排列；续写产生的块追加在已有块之后 */
   blocks: ReplyBlock[]
+  /** 客户端工具调用记录（供执行与回传，不直接作为渲染内容块） */
+  toolCalls?: { id: string; name: string; input: unknown; raw?: string; index?: number }[]
+  /** 智能体轨迹：本轮工具调用记录，供右侧轨迹面板展示 */
+  trace?: TraceStep[]
   stopReason?: StopReason
   stopDetails?: StopDetails
   /** 最近一次请求的用量，续写后更新 */
@@ -107,11 +113,29 @@ export type AssistantMessage = MessageBranch & {
 
 export type Message = UserMessage | AssistantMessage
 
+/** 智能体轨迹：一次工具调用的结构化记录 */
+export type TraceStep = {
+  id: string
+  kind: 'tool'
+  name: string
+  /** 参数摘要（JSON 字符串，已截断） */
+  input: string
+  /** 结果摘要（已截断） */
+  output: string
+  isError: boolean
+  /** 耗时（毫秒） */
+  ms: number
+  /** 发生时间戳 */
+  at: number
+}
+
 export type Session = {
   id: string
   title: string
   createdAt: number
   updatedAt: number
+  /** 所属工作区；undefined 视为默认工作区 */
+  workspaceId?: string
   /** 包含所有分支的消息，按创建顺序存储。 */
   messages: Message[]
   /** undefined 表示线性消息列表；null 表示空会话。 */
@@ -119,7 +143,10 @@ export type Session = {
 }
 
 /** 会话列表元数据；消息只在打开会话时加载。 */
-export type SessionSummary = Pick<Session, 'id' | 'title' | 'createdAt' | 'updatedAt'>
+export type SessionSummary = Pick<
+  Session,
+  'id' | 'title' | 'createdAt' | 'updatedAt' | 'workspaceId'
+>
 
 /** 显式提取字段，避免将完整会话的消息带进列表。 */
 export const toSessionSummary = (session: SessionSummary): SessionSummary => ({
@@ -127,4 +154,5 @@ export const toSessionSummary = (session: SessionSummary): SessionSummary => ({
   title: session.title,
   createdAt: session.createdAt,
   updatedAt: session.updatedAt,
+  workspaceId: session.workspaceId,
 })
