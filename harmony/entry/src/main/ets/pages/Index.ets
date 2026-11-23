@@ -158,12 +158,24 @@ struct Index {
    * ArkWeb 默认不会像桌面浏览器那样落盘，必须自己接 downloadDelegate。
    * 这里统一落到应用沙箱 downloads/，再由 onDownloadFinish 交给用户。
    */
+  /**
+   * 把系统给的文件名收敛成安全的单段名字。
+   *
+   * 名字来自页面（a[download]），理论上可以带 / 、.. 或者 Windows 的非法字符；
+   * 直接拼进沙箱路径就是路径穿越。这里统一削掉。
+   */
+  private safeFileName(raw: string): string {
+    const cleaned = raw.replace(/[\\/:*?"<>|]/g, '_').replace(/^\.+/, '').trim()
+    return cleaned.length > 0 ? cleaned.slice(0, 120) : 'download'
+  }
+
   private setupDownload(): void {
     const delegate = new webview.WebDownloadDelegate()
     delegate.onBeforeDownload((item: webview.WebDownloadItem) => {
-      const name = item.getSuggestedFileName().length > 0
-        ? item.getSuggestedFileName()
-        : 'download-' + Date.now().toString()
+      const rawName = item.getSuggestedFileName()
+      const name = this.safeFileName(
+        rawName.length > 0 ? rawName : 'download-' + Date.now().toString()
+      )
       const target = this.downloadDir + '/' + name
       hilog.info(
         DOMAIN,
@@ -205,7 +217,7 @@ struct Index {
       hilog.error(DOMAIN, TAG, 'handover skipped: no context')
       return
     }
-    const name = suggested.length > 0 ? suggested : 'download'
+    const name = this.safeFileName(suggested)
     try {
       const documentPicker = new picker.DocumentViewPicker(this.abilityContext)
       const options = new picker.DocumentSaveOptions()
@@ -215,26 +227,47 @@ struct Index {
         hilog.info(DOMAIN, TAG, 'handover cancelled by user')
         return
       }
-      const stat = fs.statSync(path)
-      const buf = new ArrayBuffer(stat.size)
-      const src = await fs.open(path, fs.OpenMode.READ_ONLY)
-      try {
-        await fs.read(src.fd, buf)
-      } finally {
-        await fs.close(src)
-      }
-      const dst = await fs.open(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC)
-      try {
-        await fs.write(dst.fd, buf)
-      } finally {
-        await fs.close(dst)
-      }
+      const written = await this.copyToUri(path, uris[0])
       fs.unlinkSync(path)
-      hilog.info(DOMAIN, TAG, 'handover done: %{public}s -> %{public}s', name, uris[0])
+      hilog.info(
+        DOMAIN,
+        TAG,
+        'handover done: %{public}s (%{public}d bytes) -> %{public}s',
+        name,
+        written,
+        uris[0]
+      )
     } catch (error) {
       const err = error as Error
       hilog.error(DOMAIN, TAG, 'handover failed: %{public}s', err.message)
     }
+  }
+
+  /**
+   * 分块把沙箱文件拷到用户选的位置，返回写入字节数。
+   *
+   * 不能一次 new ArrayBuffer(stat.size)：导出的历史对话 ZIP 可能几十上百 MB，
+   * 整块读进内存会直接把应用顶爆。256 KB 一块足够快，也不会撑破内存。
+   */
+  private async copyToUri(source: string, uri: string): Promise<number> {
+    const CHUNK = 256 * 1024
+    const stat = fs.statSync(source)
+    const src = await fs.open(source, fs.OpenMode.READ_ONLY)
+    const dst = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC)
+    let offset = 0
+    try {
+      while (offset < stat.size) {
+        const size = Math.min(CHUNK, stat.size - offset)
+        const buf = new ArrayBuffer(size)
+        await fs.read(src.fd, buf, { offset: offset, length: size })
+        await fs.write(dst.fd, buf)
+        offset += size
+      }
+    } finally {
+      await fs.close(src)
+      await fs.close(dst)
+    }
+    return offset
   }
 
   /** 返回键先退 web 历史，退不动才交给系统 */

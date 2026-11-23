@@ -130,7 +130,13 @@ export class WebAssets {
     if (path.indexOf('..') >= 0) {
       return null
     }
-    return decodeURIComponent(path)
+    try {
+      return decodeURIComponent(path)
+    } catch (error) {
+      // URL 里出现不合法的 % 转义（比如 /foo%zz）时 decodeURIComponent 会抛，
+      // 这个异常会一路冒到 onInterceptRequest，让那次请求直接失败。原样返回即可。
+      return path
+    }
   }
 
   private static decode(bytes: Uint8Array): string {
