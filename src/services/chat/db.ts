@@ -2,7 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { toSessionSummary, type Session, type SessionSummary } from './types.js'
 
 /** IndexedDB 存储结构版本；新增或调整存储、索引时递增。 */
-const DB_VERSION = 11
+const DB_VERSION = 12
 
 /** 文件原件按附件的本地 id 存储，所有引用同一 id 的消息共用一份；用于缩略图、打开查看，以及没有 serverId 时补传。 */
 export type StoredFile = {
@@ -12,6 +12,24 @@ export type StoredFile = {
 
 /** 文件引用留在摘要中，删除会话时通过索引判断原件是否仍被引用。 */
 type StoredSessionSummary = SessionSummary & { fileIds: string[] }
+
+/** 工具产出的文件：正文与元数据一起存，消息里只保留 id 引用 */
+export type StoredArtifact = {
+  id: string
+  name: string
+  mime: string
+  size: number
+  kind: string
+  createdAt: number
+  source: string
+  tool?: string
+  /** 文本类产物直接存字符串 */
+  text?: string
+  /** 二进制产物存 data URL */
+  dataUrl?: string
+  /** 所属会话，便于清理 */
+  sessionId?: string
+}
 
 interface ChatDB extends DBSchema {
   /** 当前使用的会话，界面读写都在这里 */
@@ -29,6 +47,8 @@ interface ChatDB extends DBSchema {
    */
   sessionsStaging: { key: string; value: Session }
   filesStaging: { key: string; value: StoredFile }
+  /** 工具产物（文本、图片、二进制），按 id 引用 */
+  artifacts: { key: string; value: StoredArtifact; indexes: { sessionId: string } }
 }
 
 let dbPromise: Promise<IDBPDatabase<ChatDB>> | null = null
@@ -67,6 +87,10 @@ const getDB = () =>
         : db.createObjectStore('sessionSummaries', { keyPath: 'id' })
       if (!summaries.indexNames.contains('fileIds')) {
         summaries.createIndex('fileIds', 'fileIds', { multiEntry: true })
+      }
+      if (!db.objectStoreNames.contains('artifacts')) {
+        const artifacts = db.createObjectStore('artifacts', { keyPath: 'id' })
+        artifacts.createIndex('sessionId', 'sessionId')
       }
     },
   }).catch((error: unknown) => {
@@ -248,4 +272,20 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
 export const reportStorageError = (action: string) => (error: unknown) => {
   // eslint-disable-next-line no-console
   console.error(`[storage] ${action} failed`, error)
+}
+
+/** 保存工具产物 */
+export const saveArtifact = async (artifact: StoredArtifact): Promise<void> => {
+  await (await getDB()).put('artifacts', artifact)
+}
+
+export const loadArtifact = async (id: string): Promise<StoredArtifact | undefined> =>
+  (await getDB()).get('artifacts', id)
+
+/** 删除会话时清理其产物 */
+export const deleteSessionArtifacts = async (sessionId: string): Promise<void> => {
+  const db = await getDB()
+  const tx = db.transaction('artifacts', 'readwrite')
+  const keys = await tx.store.index('sessionId').getAllKeys(sessionId)
+  await Promise.all([...keys.map((key) => tx.store.delete(key)), tx.done])
 }

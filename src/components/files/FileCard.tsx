@@ -26,6 +26,7 @@ export const FileCard = ({
   error?: string
   onRetry?: () => void
   onRemove?: () => void
+  /** 打开原件的链接属性；由调用方按扩展名决定内嵌打开还是下载 */
   link?: AnchorHTMLAttributes<HTMLAnchorElement>
 }) => {
   const t = useTranslate()
@@ -66,7 +67,7 @@ export const FileCard = ({
         <div className={styles.caption}>{name}</div>
         <div className={styles.subCaption}>{description}</div>
       </div>
-      {fileLink && <a {...fileLink} aria-label={name} />}
+      {fileLink ? <a {...fileLink} aria-label={name} /> : null}
       {onRemove ? (
         <button
           type="button"

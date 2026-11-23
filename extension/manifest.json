@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "DeepSeek Agent Bridge",
+  "version": "1.0.0",
+  "description": "把当前网页的读取与操作能力交给 DeepSeek Agent：正文提取、点击输入、滚动、截图与标签页管理。",
+  "minimum_chrome_version": "105",
+  "permissions": ["tabs", "scripting", "storage", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "DeepSeek Agent Bridge",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

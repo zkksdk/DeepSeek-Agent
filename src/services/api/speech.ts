@@ -1,5 +1,4 @@
-import { ApiError, request } from './client.js'
-import { getApiOrigin } from './runtimeConfig.js'
+import { ApiError, API_ORIGIN, request } from './client.js'
 
 /**
  * 语音接口：
@@ -7,7 +6,7 @@ import { getApiOrigin } from './runtimeConfig.js'
  * - TTS：POST /v1/tools/tts，返回音频字节流（产出首帧后即返回 200）
  * 鉴权都用 Authorization: Bearer。
  */
-const toolsBaseUrl = () => `${getApiOrigin()}/v1/tools`
+const TOOLS_BASE_URL = `${API_ORIGIN}/v1/tools`
 
 export type TtsVoice = 'stella' | 'tide'
 
@@ -22,7 +21,7 @@ export const transcribe = async (
 ): Promise<string> => {
   const form = new FormData()
   form.append('file', audio, 'recording.wav')
-  const response = await request(`${toolsBaseUrl()}/asr`, {
+  const response = await request(`${TOOLS_BASE_URL}/asr`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
@@ -53,7 +52,7 @@ export const synthesize = async (
   voice: TtsVoice,
   signal: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> => {
-  const response = await request(`${toolsBaseUrl()}/tts`, {
+  const response = await request(`${TOOLS_BASE_URL}/tts`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, voice_id: voice, format: 'pcm', filter_markdown: true }),

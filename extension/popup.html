@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Bridge</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --brand: #3964fe;
+        --text: #1b1c1f;
+        --sub: #6b7280;
+        --line: rgba(16, 24, 40, 0.1);
+        --bg: #ffffff;
+        --card: #f7f8fa;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text: #ececf1;
+          --sub: #9aa0aa;
+          --line: rgba(255, 255, 255, 0.1);
+          --bg: #1b1c1f;
+          --card: #232428;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        width: 320px;
+        margin: 0;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 12px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
+      }
+      .title {
+        font-weight: 600;
+        font-size: 13.5px;
+      }
+      .version {
+        margin-left: auto;
+        color: var(--sub);
+        font-size: 11px;
+      }
+      .card {
+        padding: 10px 11px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--card);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      .row + .row {
+        margin-top: 5px;
+      }
+      .label {
+        flex: 0 0 auto;
+        color: var(--sub);
+        font-size: 11.5px;
+      }
+      .value {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+      }
+      .hint {
+        margin-top: 11px;
+        color: var(--sub);
+        font-size: 11.5px;
+        line-height: 1.6;
+      }
+      a {
+        color: var(--brand);
+        text-decoration: none;
+      }
+      .list {
+        margin: 8px 0 0;
+        padding: 0;
+        list-style: none;
+        max-height: 120px;
+        overflow: auto;
+      }
+      .list li {
+        display: flex;
+        gap: 6px;
+        padding: 3px 0;
+        font-size: 11.5px;
+        color: var(--sub);
+      }
+      .list b {
+        flex: 0 0 auto;
+        color: var(--text);
+        font-weight: 500;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <span class="dot"></span>
+      <span class="title">Agent Bridge 已启用</span>
+      <span class="version" id="version">v1.0.0</span>
+    </div>
+    <div class="card">
+      <div class="row"><span class="label">当前页面</span><span class="value" id="current">读取中…</span></div>
+      <div class="row"><span class="label">可操作标签</span><span class="value" id="count">—</span></div>
+    </div>
+    <ul class="list" id="tabs"></ul>
+    <p class="hint">
+      回到 Agent 页面刷新一次即可连接。工具会自动读取你最近查看的网页；也可以在对话里指定标签页。
+    </p>
+    <script src="popup.js"></script>
+  </body>
+</html>

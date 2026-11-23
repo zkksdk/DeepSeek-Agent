@@ -1,3 +1,11 @@
+.root {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .container {
   flex: 1;
   min-height: 0;
@@ -36,24 +44,25 @@
   padding-bottom: 24px;
 }
 
-.jumpBottom {
-  position: absolute;
-  right: 20px;
-  bottom: 132px;
-  z-index: 6;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-base, #fff);
-  color: var(--dsw-alias-label-primary);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+
+/* 新消息挂载时轻微上浮；流式更新不会重新触发，避免抖动 */
+.column > * {
+  animation: messageIn 0.34s var(--ds-ease-in-out) both;
 }
 
-.jumpBottom:hover {
-  border-color: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-brand-primary);
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .column > * {
+    animation: none;
+  }
 }

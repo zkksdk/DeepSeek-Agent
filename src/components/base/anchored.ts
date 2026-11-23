@@ -146,12 +146,16 @@ export const useAnchoredPosition = <T extends HTMLElement, F extends HTMLElement
     const available = Math.max(0, resolved === 'top' ? spaceAbove : spaceBelow)
     // 内容比可用空间小时按内容收口，避免浮层留出多余空白
     const height = Math.max(40, Math.min(maxHeight, available, floating.scrollHeight + 2))
+    // 按触发元素右缘对齐，但不能把浮层挤出视口左侧：窄屏 / 靠左的触发元素会退到 8px 处
+    // 用布局宽度：入场动画的 scale 会让 getBoundingClientRect 偏小，导致右侧收敛算错
+    const width = floating.offsetWidth
+    const rightLimit = Math.max(VIEWPORT_PADDING, window.innerWidth - width - VIEWPORT_PADDING)
     applyPosition({
       top:
         resolved === 'top'
           ? Math.max(VIEWPORT_PADDING, rect.top - offset - height)
           : rect.bottom + offset,
-      right: Math.max(VIEWPORT_PADDING, window.innerWidth - rect.right),
+      right: Math.max(VIEWPORT_PADDING, Math.min(window.innerWidth - rect.right, rightLimit)),
       maxHeight: height,
     })
   }, [align, alignOffset, applyPosition, floatingRef, getAnchor, maxHeight, minSpace, offset, side])

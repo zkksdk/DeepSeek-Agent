@@ -1,12 +1,7 @@
 import { create } from 'zustand'
 import { createId } from '../../utils/id.js'
 import { ApiError, streamMessage } from '../api/client.js'
-import type {
-  AssistantBlockParam,
-  ChatModel,
-  CreateMessageRequest,
-  MessageParam,
-} from '../api/types.js'
+import type { ChatModel, CreateMessageRequest, RequestTool } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
 import {
   cancelUpload,
@@ -15,14 +10,22 @@ import {
   uploadAttachment,
   useUploads,
 } from '../attachments.js'
-import { useSettings } from '../settings.js'
-import { AGENT_TOOLS } from '../agent/tools.js'
-import { collectExternalTools, runAnyTool } from '../agent/registry.js'
-import { buildMemoryPrompt } from '../agent/memory.js'
-import { extractMemories } from '../agent/memoryExtract.js'
-import { useWorkspaces } from './workspaces.js'
+import { reasoningEffortValue, thinkingBudget, useSettings } from '../settings.js'
+import { defaultSystemPrompt } from '../systemPrompt.js'
+import { buildToolDeclarations, runToolCalls } from '../agent/runtime.js'
+import { clearApprovals } from '../agent/approval.js'
+import { clearUserPrompts } from '../agent/userPrompt.js'
+import { mockStreamMessage } from '../agent/mock.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import * as db from './db.js'
+import {
+  beginLiveRun,
+  finishLiveRun,
+  noteDelta,
+  noteUsage,
+} from './liveStats.js'
+import { noteContextUsage } from './contextUsage.js'
+import { goalsPrompt } from '../goals.js'
 import {
   clearAllDrafts,
   clearDraft,
@@ -48,14 +51,16 @@ import {
   type UserMessage,
 } from './types.js'
 
-/** 当前生效模型：优先使用设置中的自定义模型，未设置时回落到 deepseek-flash */
-const currentModel = (): ChatModel => useSettings.getState().model || 'deepseek-flash'
-/** 所有生成请求统一携带的助手身份说明 */
-const SYSTEM_PROMPT = '该助手为DeepSeek，由深度求索公司创造。'
-/** 智能体模式：在基础提示词上补充工具使用约定 */
-const AGENT_SYSTEM_PROMPT = `${SYSTEM_PROMPT} 你可以调用提供的工具来获取信息或完成计算。需要时直接调用工具，不要编造工具结果；拿到工具结果后再继续推理并给出最终回答。`
-/** 单轮提问内最多执行的工具往返次数 */
-const MAX_AGENT_TOOL_ROUNDS = 6
+/** deepseek-flash 同时支持深度思考与图片输入 */
+const MODEL: ChatModel = 'deepseek-flash'
+/**
+ * 系统提示词完全以设置为准（默认已预填身份与工具协议），再追加当前目标。
+ * 不再由代码额外拼接基础提示，避免用户在设置里删掉某句后仍然被加回来。
+ */
+const systemPrompt = () => {
+  const base = useSettings.getState().systemPrompt.trim() || defaultSystemPrompt()
+  return `${base}${goalsPrompt()}`
+}
 /** 保留最近打开的详情；当前会话、生成中及尚未成功保存的会话不淘汰。 */
 const SESSION_CACHE_LIMIT = 5
 /** 安全审核固定开启，所有请求都走扩展模式 */
@@ -66,14 +71,21 @@ const FILE_RETRY_LIMIT = 2
 const FILE_RETRY_BASE_DELAY = 1000
 
 /** 阅读链接始终开启，智能搜索开关控制是否另行声明搜索工具（含边想边搜）。 */
-const serverTools = (search: boolean): CreateMessageRequest['tools'] => {
-  const tools: CreateMessageRequest['tools'] = [
-    { type: 'deepseek_read_url', name: 'deepseek_read_url' },
-  ]
+const serverTools = (search: boolean): RequestTool[] => {
+  const tools: RequestTool[] = [{ type: 'deepseek_read_url', name: 'deepseek_read_url' }]
   if (search) {
     tools.push({ type: 'deepseek_web_search', name: 'deepseek_web_search' })
   }
   return tools
+}
+
+/**
+ * 本轮声明的工具：服务端联网能力 + 客户端工具。
+ * 关闭 agent 时只保留服务端工具，退化为原有聊天体验。
+ */
+const requestTools = (search: boolean, agentEnabled: boolean): RequestTool[] => {
+  const tools = serverTools(search)
+  return agentEnabled ? [...tools, ...buildToolDeclarations()] : tools
 }
 
 /** 允许自动补标题的请求；手动重命名后取消本轮标题写入，包含主动清空标题的情况。 */
@@ -275,12 +287,12 @@ export const bindChatPersistence = () => {
 
 /** 按当前开关创建回复：深度思考对应 thinking，智能搜索控制 deepseek_web_search。 */
 const createReply = (): AssistantMessage => {
-  const { thinking, search } = useSettings.getState()
+  const { thinking, search, model } = useSettings.getState()
   return {
     id: createId(),
     role: 'assistant',
     createdAt: Date.now(),
-    model: currentModel(),
+    model: model || MODEL,
     thinking,
     search,
     prefix: true,
@@ -460,12 +472,38 @@ export const replaceHistory = async (write: () => Promise<void>): Promise<number
   }
 }
 
-export const newChat = () => {
-  if (!get().importingHistory) {
+/**
+ * 导入一段分享来的对话：先落库再切过去。
+ * 保存失败也留在内存里，用户仍能查看，下一次编辑会再存一遍。
+ */
+export const importSharedSession = async (session: Session): Promise<void> => {
+  if (get().importingHistory) {
+    return
+  }
+  set((state) => ({
+    sessions: sortSessions([
+      toSessionSummary(session),
+      ...state.sessions.filter((item) => item.id !== session.id),
+    ]),
+    sessionCache: { ...state.sessionCache, [session.id]: session },
+    activeId: session.id,
+  }))
+  touchSession(session.id)
+  try {
+    await db.saveSession(session)
+  } catch (error) {
+    db.reportStorageError('save session')(error)
+  }
+}
+
+export const newChat = () => {  if (!get().importingHistory) {
     set({ activeId: null })
     trimSessionCache()
   }
 }
+
+/** 不切换界面的详情读取：分享、导出这类动作需要完整消息但不想打断当前会话 */
+export const loadSessionDetail = (id: string): Promise<void> => ensureSessionLoaded(id)
 
 export const selectSession = (id: string) => {
   if (!get().importingHistory && get().sessions.some((session) => session.id === id)) {
@@ -521,6 +559,7 @@ const removeSessionData = async (id: string): Promise<boolean> => {
       return false
     }
     await db.deleteSession(id)
+    void db.deleteSessionArtifacts(id)
     if (epoch !== historyEpoch) {
       return true
     }
@@ -588,7 +627,6 @@ export const sendMessage = (targetSessionId: string | null) => {
       title: '',
       createdAt: now,
       updatedAt: now,
-      workspaceId: useWorkspaces.getState().activeId,
       messages: [],
       rootMessageId: null,
     }
@@ -634,6 +672,38 @@ export const sendMessage = (targetSessionId: string | null) => {
   }
   persist(sessionId)
   clearSentDraft(targetSessionId)
+  void streamReply(sessionId, reply, { history, question })
+  return true
+}
+
+/**
+ * 以用户身份追加一条消息并立刻请求回答。
+ * 后台任务完成后「把结果发给 Agent」走这里，用户能看到自己发了什么，也能撤回。
+ */
+export const sendInjectedMessage = (sessionId: string, text: string) => {
+  const content = text.trim()
+  if (!content || get().importingHistory || deletingSessions.has(sessionId)) {
+    return false
+  }
+  const session = getSession(sessionId)
+  if (!session || getStreamController(sessionId)) {
+    return false
+  }
+  const now = Date.now()
+  const history = getVisibleMessages(session)
+  const question: UserMessage = {
+    id: createId(),
+    role: 'user',
+    content,
+    files: [],
+    createdAt: now,
+  }
+  const reply = createReply()
+  updateSession(sessionId, (current) => ({
+    ...appendBranch(current, history.at(-1)?.id ?? null, [question, reply]),
+    updatedAt: now,
+  }))
+  persist(sessionId)
   void streamReply(sessionId, reply, { history, question })
   return true
 }
@@ -728,11 +798,11 @@ export const continueReply = (sessionId: string, messageId: string) => {
   ) {
     return
   }
-  const { thinking, search } = useSettings.getState()
+  const { thinking, search, model } = useSettings.getState()
   const reply: AssistantMessage = {
     ...previous,
-    // 未记录请求配置的回复，续写时使用默认模型和当前开关。
-    model: previous.model ?? currentModel(),
+    // 未记录请求配置的回复，续写时使用当前选择的模型和开关。
+    model: previous.model ?? model ?? MODEL,
     thinking: previous.thinking ?? thinking,
     search: previous.search ?? search,
     status: 'pending',
@@ -848,17 +918,17 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   // 否则快照里仍是旧 id，补传会直接复用它。
   request = refreshRequest(sessionId, request)
   const apiKey = useSettings.getState().apiKey ?? ''
-  const serverIds = new Map<string, string>()
+  const serverIds = new Map<string, string | null>()
   // 停止生成立即生效；上传本身不取消（输入框与其他消息可能共用同一任务），完成后照常写回 serverId
   const aborted = new Promise<never>((_, reject) => {
     signal.addEventListener('abort', () => reject(signal.reason), { once: true })
   })
   // 旧图片超限时先清除 ID，交给下方已有的附件补传流程。
-  const files = [
+  const allFiles = [
     ...request.question.files,
     ...getContextRounds(request.history).flatMap(([user]) => user.files),
   ]
-  const checked = await Promise.race([checkImageFileIds(files, signal), aborted])
+  const checked = await Promise.race([checkImageFileIds(allFiles, signal), aborted])
   if (checked.size > 0) {
     saveServerIds(sessionId, checked)
     request = refreshRequest(sessionId, request)
@@ -1005,10 +1075,9 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
   }
   set((state) => ({ streaming: { ...state.streaming, [sessionId]: controller } }))
   let reply = initial
+  /** 首个请求真正发出时才开始计时，附件上传时间不计入首字延迟 */
+  let metricsStarted = false
   let frame = 0
-  /** 智能体模式下累积的工具往返消息（包含 assistant 的 tool_use 与 user 的 tool_result） */
-  let extraMessages: MessageParam[] = []
-  let toolRounds = 0
   const flush = () => {
     cancelAnimationFrame(frame)
     frame = 0
@@ -1017,220 +1086,246 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
   streamFlushes.set(sessionId, flush)
 
   try {
-    for (let attempt = 0; ; attempt += 1) {
-      /** 附件补齐前出错属于上传失败，请求还没有发出 */
-      let preparing = true
-      let receivedContent = false
-      try {
-        const prepared = await prepareFiles(sessionId, request, controller.signal)
-        preparing = false
-        // 附件就绪后获取本轮信息；续写沿用原回答快照，重新生成的快照独立保存。
-        const latestReminder = prepared.prefix
-          ? prepared.prefix.latestReminder
-          : createLatestReminder(useSettings.getState())
-        reply = { ...reply, latestReminder }
-        updateReply(sessionId, reply)
-        persist(sessionId)
-        const messages = [
-          ...toRequestMessages(
+    const settings = useSettings.getState()
+    // 续写使用前缀，不能同时跑工具循环；关闭 agent 时退化为普通聊天。
+    const agentEnabled = settings.agentEnabled && !request.prefix
+    // 关掉「最大步数」后不设上限，交给用户自己盯；打开时按设置值收口
+    const maxRounds = agentEnabled
+      ? settings.maxStepsEnabled
+        ? settings.maxToolRounds
+        : Number.POSITIVE_INFINITY
+      : 0
+    /** 服务端不支持自定义工具时，去掉工具声明重试一次，至少保证对话可用 */
+    let fallbackWithoutTools = false
+    /** 服务端不认识思考强度字段时，退回只声明 enabled，保证对话可用 */
+    let fallbackNoReasoning = false
+    /** 服务端解析请求体失败时，去掉图片与超长结果重试，先把这一轮救回来 */
+    let compactRequest = false
+
+    for (let round = 0; ; round += 1) {
+      let hasPendingTools = false
+      let roundErrored = false
+
+      for (let attempt = 0; ; attempt += 1) {
+        /** 附件补齐前出错属于上传失败，请求还没有发出 */
+        let preparing = true
+        let receivedContent = false
+        try {
+          const prepared = await prepareFiles(sessionId, request, controller.signal)
+          preparing = false
+          // 附件就绪后获取本轮信息；续写沿用原回答快照，重新生成的快照独立保存。
+          const latestReminder = prepared.prefix
+            ? prepared.prefix.latestReminder
+            : createLatestReminder(useSettings.getState())
+          reply = { ...reply, latestReminder }
+          updateReply(sessionId, reply)
+          persist(sessionId)
+          const messages = toRequestMessages(
             prepared.history,
             prepared.question,
             prepared.prefix,
             initial.thinking ?? false,
-            latestReminder
-          ),
-          ...extraMessages,
-        ]
-        const agentMode = useSettings.getState().agentMode
-        const baseSystem = agentMode ? AGENT_SYSTEM_PROMPT : SYSTEM_PROMPT
-        const systemPrompt = `${baseSystem}${buildMemoryPrompt(
-          prepared.question.content,
-          useWorkspaces.getState().activeId,
-          useSettings.getState().memorySpark
-        )}`
-        const toolOverrides = useSettings.getState().toolOverrides
-        const enabledAgentTools = AGENT_TOOLS.filter(
-          (tool) => toolOverrides[tool.name] !== false
-        )
-        const externalTools = agentMode ? await collectExternalTools() : []
-        const events = streamMessage(
-          useSettings.getState().apiKey ?? '',
-          {
-            model: initial.model ?? currentModel(),
-            system: systemPrompt,
-            messages,
-            thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
-            safety_check: SAFETY_CHECK,
-            tools: agentMode
-              ? [...serverTools(initial.search ?? false), ...enabledAgentTools, ...externalTools]
-              : serverTools(initial.search ?? false),
-            ...(titleRequests.has(controller) ? { title: { enabled: true } } : {}),
-          },
-          controller.signal
-        )
-        const blockIndexes = new Map<number, number>()
-        /** 本轮开始时的块数，便于只回传本轮真实输出 */
-        const roundStartIndex = reply.blocks.length
-        for await (const event of events) {
-          receivedContent ||= event.type === 'content_block_start'
-          if (
-            event.type === 'message_delta' &&
-            (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'max_tokens') &&
-            event.delta.title?.trim() &&
-            titleRequests.has(controller) &&
-            !controller.signal.aborted &&
-            !get().importingHistory
-          ) {
-            const title = event.delta.title.trim()
-            updateSession(sessionId, (session) => (session.title ? session : { ...session, title }))
-            titleRequests.delete(controller)
-          }
-          reply = applyEvent(reply, event, Date.now(), blockIndexes)
-          if (document.visibilityState === 'hidden') {
-            flush()
-          } else {
-            frame ||= requestAnimationFrame(flush)
-          }
-        }
-        // 智能体模式：模型请求调用本地工具时，执行后回传结果并继续推理
-        const toolCalls = reply.toolCalls
-        if (
-          agentMode &&
-          reply.stopReason === 'tool_use' &&
-          toolCalls?.length &&
-          toolRounds < MAX_AGENT_TOOL_ROUNDS &&
-          !controller.signal.aborted
-        ) {
-          toolRounds += 1
-          const results = await Promise.all(
-            toolCalls.map(async (call) => {
-              const startedAt = Date.now()
-              const result = await runAnyTool(call.name, call.input, controller.signal)
-              return { ...result, ms: Date.now() - startedAt }
-            })
+            latestReminder,
+            // 工具轮回：把本轮已产生的调用与结果接在提问之后
+            round > 0 ? reply : undefined,
+            compactRequest
           )
-          if (controller.signal.aborted) {
-            reply = settleReply(reply, 'stopped', Date.now())
-            break
+          const withTitle = round === 0 && titleRequests.has(controller)
+          const effort = initial.thinking ? useSettings.getState().reasoningEffort : 0
+          const body: CreateMessageRequest = {
+            model: initial.model ?? settings.model ?? MODEL,
+            system: systemPrompt(),
+            messages,
+            thinking: initial.thinking
+              ? fallbackNoReasoning
+                ? { type: 'enabled' }
+                : { type: 'enabled', budget_tokens: thinkingBudget(effort) }
+              : { type: 'disabled' },
+            // 真实下发思考强度：关闭思考时不带该字段
+            ...(initial.thinking && effort > 0 && !fallbackNoReasoning
+              ? { reasoning_effort: reasoningEffortValue(effort) }
+              : {}),
+            safety_check: SAFETY_CHECK,
+            // 采样参数留空时不下发，走服务端默认值
+            ...(settings.temperature !== null ? { temperature: settings.temperature } : {}),
+            ...(settings.topP !== null ? { top_p: settings.topP } : {}),
+            tools: requestTools(initial.search ?? false, agentEnabled && !fallbackWithoutTools),
+            ...(withTitle ? { title: { enabled: true } } : {}),
           }
-          const shown = results
-            .map((result) => `${result.isError ? '\u274c' : '\u2705'} ${result.content}`)
-            .join('\n\n')
-          // 按本轮模型真实输出（思考及其签名 + 正文）构造 assistant 回传内容，
-          // 保留 thinking 签名才能让模型在带工具的多轮里继续输出思考链。
-          const priorContent: AssistantBlockParam[] = []
-          for (const block of reply.blocks.slice(roundStartIndex)) {
-            if (block.type === 'thinking' && block.thinking.trim() && block.signature) {
-              priorContent.push({
-                type: 'thinking',
-                thinking: block.thinking,
-                signature: block.signature,
-              })
-            } else if (block.type === 'text' && !block.displayOnly && block.text.trim()) {
-              priorContent.push({ type: 'text', text: block.text })
+          if (!metricsStarted) {
+            metricsStarted = true
+            beginLiveRun(sessionId, body.model)
+          }
+          const events = settings.mockAgent
+            ? mockStreamMessage(body, controller.signal)
+            : streamMessage(settings.apiKey ?? '', body, controller.signal)
+          const blockIndexes = new Map<number, number>()
+          for await (const event of events) {
+            receivedContent ||= event.type === 'content_block_start'
+            if (event.type === 'message_start') {
+              noteUsage(event.message.usage, 'start')
+              noteContextUsage(sessionId, event.message.usage)
+            } else if (event.type === 'content_block_delta') {
+              if (event.delta.type === 'text_delta') {
+                noteDelta('text', event.delta.text)
+              } else if (event.delta.type === 'thinking_delta') {
+                noteDelta('thinking', event.delta.thinking)
+              }
+            } else if (event.type === 'message_delta') {
+              noteUsage(event.usage, 'delta')
+            }
+            if (
+              event.type === 'message_delta' &&
+              (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'max_tokens') &&
+              event.delta.title?.trim() &&
+              withTitle &&
+              !controller.signal.aborted &&
+              !get().importingHistory
+            ) {
+              const title = event.delta.title.trim()
+              updateSession(sessionId, (session) =>
+                session.title ? session : { ...session, title }
+              )
+              titleRequests.delete(controller)
+            }
+            reply = applyEvent(reply, event, Date.now(), blockIndexes)
+            if (document.visibilityState === 'hidden') {
+              flush()
+            } else {
+              frame ||= requestAnimationFrame(flush)
             }
           }
-          const traceSteps = toolCalls.map((call, index) => ({
-            id: `${call.id}-${index}`,
-            kind: 'tool' as const,
-            name: call.name,
-            input: JSON.stringify(call.input ?? {}).slice(0, 300),
-            output: results[index].content.slice(0, 500),
-            isError: results[index].isError,
-            ms: results[index].ms,
-            at: Date.now(),
-          }))
-          reply = {
-            ...reply,
-            blocks: [...reply.blocks, { type: 'text', text: `\n${shown}\n\n`, displayOnly: true }],
-            toolCalls: undefined,
-            stopReason: undefined,
-            trace: [...(reply.trace ?? []), ...traceSteps],
-          }
-          updateReply(sessionId, reply)
-          persist(sessionId)
-          extraMessages = [
-            ...extraMessages,
-            {
-              role: 'assistant',
-              content: [
-                ...priorContent,
-                ...toolCalls.map((call) => ({
-                  type: 'tool_use' as const,
-                  id: call.id,
-                  name: call.name,
-                  input: call.input,
-                })),
-              ],
-            },
-            {
-              role: 'user',
-              content: toolCalls.map((call, index) => ({
-                type: 'tool_result' as const,
-                tool_use_id: call.id,
-                content: results[index].content,
-                is_error: results[index].isError,
-              })),
-            },
-          ]
-          continue
-        }
-        reply = settleReply(reply, 'done', Date.now())
-        // 每轮结束后自动整理记忆（异步，不阻塞收尾；可用设置关闭）
-        const assistantText = reply.blocks
-          .flatMap((block) =>
-            block.type === 'text' && !block.displayOnly && !block.isTemplate ? [block.text] : []
-          )
-          .join('\n')
-        void extractMemories(request.question.content, assistantText, controller.signal)
-        break
-      } catch (error) {
-        if (controller.signal.aborted) {
-          reply = settleReply(reply, 'stopped', Date.now())
+          reply = settleReply(reply, 'done', Date.now())
+          hasPendingTools =
+            agentEnabled &&
+            !fallbackWithoutTools &&
+            reply.stopReason === 'tool_use' &&
+            reply.blocks.some((block) => block.type === 'tool_use' && block.status === 'pending')
           break
-        }
-        if (preparing) {
-          reply = settleReply(reply, 'error', Date.now(), {
-            kind: 'upload',
-            message: '',
-            localMessage: describeUploadError(error),
-            retryable: isRetryableApiError(error),
-          })
-          break
-        }
-        // 附件失效：重新补传后重发。收到过内容块（含丢弃的客户端工具）后不自动重发。
-        if (
-          attempt < FILE_RETRY_LIMIT &&
-          !receivedContent &&
-          reuploadInvalidatedFiles(sessionId, request, error)
-        ) {
-          await waitForRetry(attempt, controller.signal)
+        } catch (error) {
           if (controller.signal.aborted) {
             reply = settleReply(reply, 'stopped', Date.now())
+            roundErrored = true
             break
           }
-          continue
+          if (preparing) {
+            reply = settleReply(reply, 'error', Date.now(), {
+              kind: 'upload',
+              message: '',
+              localMessage: describeUploadError(error),
+              retryable: isRetryableApiError(error),
+            })
+            roundErrored = true
+            break
+          }
+          // 服务端不认识自定义工具（400）时，去掉工具声明重试，保留对话能力
+          if (
+            agentEnabled &&
+            !fallbackWithoutTools &&
+            !receivedContent &&
+            error instanceof ApiError &&
+            error.status === 400 &&
+            /tool/i.test(error.message)
+          ) {
+            fallbackWithoutTools = true
+            continue
+          }
+          // 请求体被服务端判为非法 JSON（多为工具结果里的异常字符或超大图片）：
+          // 去掉图片、进一步截断后重发一次
+          if (
+            !compactRequest &&
+            !receivedContent &&
+            error instanceof ApiError &&
+            error.status === 400 &&
+            /json|escape|parse/i.test(error.message)
+          ) {
+            compactRequest = true
+            continue
+          }
+          // 服务端不认识 reasoning_effort / budget_tokens 时，降级为普通思考请求
+          if (
+            initial.thinking &&
+            !fallbackNoReasoning &&
+            !receivedContent &&
+            error instanceof ApiError &&
+            error.status === 400 &&
+            /reasoning|thinking|budget|effort/i.test(error.message)
+          ) {
+            fallbackNoReasoning = true
+            continue
+          }
+          // 附件失效：重新补传后重发。收到过内容块（含客户端工具）后不自动重发。
+          if (
+            attempt < FILE_RETRY_LIMIT &&
+            !receivedContent &&
+            reuploadInvalidatedFiles(sessionId, request, error)
+          ) {
+            await waitForRetry(attempt, controller.signal)
+            if (controller.signal.aborted) {
+              reply = settleReply(reply, 'stopped', Date.now())
+              roundErrored = true
+              break
+            }
+            continue
+          }
+          if (error instanceof ApiError && error.kind === 'interrupted' && reply.stopReason) {
+            // 已收到 message_delta 的结束原因，只是缺了结尾的 message_stop
+            reply = settleReply(reply, 'done', Date.now())
+          } else if (error instanceof ApiError) {
+            reply = settleReply(reply, 'error', Date.now(), {
+              kind: error.kind,
+              message: error.message,
+              status: error.status,
+              localMessage: error.localMessage,
+            })
+          } else {
+            reply = settleReply(reply, 'error', Date.now(), {
+              kind: 'protocol',
+              message: error instanceof Error ? error.message : String(error),
+            })
+          }
+          roundErrored = true
+          break
         }
-        if (error instanceof ApiError && error.kind === 'interrupted' && reply.stopReason) {
-          // 已收到 message_delta 的结束原因，只是缺了结尾的 message_stop
-          reply = settleReply(reply, 'done', Date.now())
-        } else if (error instanceof ApiError) {
-          reply = settleReply(reply, 'error', Date.now(), {
-            kind: error.kind,
-            message: error.message,
-            status: error.status,
-            localMessage: error.localMessage,
-          })
-        } else {
-          reply = settleReply(reply, 'error', Date.now(), {
-            kind: 'protocol',
-            message: error instanceof Error ? error.message : String(error),
-          })
+      }
+
+      if (!hasPendingTools || roundErrored || controller.signal.aborted) {
+        break
+      }
+
+      // 执行本轮工具：顺序执行，结果写回同一条消息，下一轮请求带上 tool_result
+      reply = await runToolCalls(reply, {
+        sessionId,
+        signal: controller.signal,
+        update: (next) => {
+          reply = next
+          flush()
+        },
+      })
+      persist(sessionId)
+      if (controller.signal.aborted) {
+        reply = settleReply(reply, 'stopped', Date.now())
+        break
+      }
+      if (round >= maxRounds) {
+        reply = {
+          ...reply,
+          blocks: [
+            ...reply.blocks,
+            {
+              type: 'text',
+              text: `\n\n> 已达到单轮 ${maxRounds} 次工具调用的上限，已停止继续调用。可以发送新消息继续。`,
+            },
+          ],
         }
         break
       }
     }
   } finally {
+    finishLiveRun(sessionId)
+    clearApprovals((item) => item.sessionId === sessionId)
+    // 本轮结束（含中止）时撤掉还挂着的提问卡片，避免留下无人等待的输入
+    clearUserPrompts((item) => item.sessionId === sessionId)
     titleRequests.delete(controller)
     streamFlushes.delete(sessionId)
     cancelAnimationFrame(frame)

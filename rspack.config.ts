@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from '@rspack/cli'
 import { rspack, type Configuration } from '@rspack/core'
 
-const dev = process.env.NODE_ENV !== 'production'
+// Windows 的 cmd 不支持 `NODE_ENV=production cmd`，同时认 CLI 的 --mode production，
+// 这样 `pnpm build` 在 Windows / macOS / Linux 上行为一致。
+const production =
+  process.env.NODE_ENV === 'production' || process.argv.includes('production')
+const dev = !production
 const targets = ['chrome >= 105', 'edge >= 105', 'safari >= 16', 'firefox >= 110']
 const root = path.dirname(fileURLToPath(import.meta.url))
 const { version } = JSON.parse(
@@ -71,23 +75,21 @@ export const createConfig = ({
         type: 'javascript/auto',
       },
       { test: /\.(woff2?|ttf)$/, type: 'asset/resource' },
+      // 词表这类大文本单独发文件，运行时按需 fetch，不塞进 JS
+      { test: /\.txt$/, type: 'asset/resource' },
     ],
   },
   plugins: [
     // 经典 defer 脚本支持 file:// 页面的资源加载
     new rspack.HtmlRspackPlugin({
       template: './src/index.html',
+      favicon: './src/favicon.svg',
       scriptLoading: 'defer',
       meta: { 'application-version': version },
     }),
     new rspack.DefinePlugin({ __API_ORIGIN__: JSON.stringify(apiOrigin) }),
     new rspack.CopyRspackPlugin({
-      patterns: [
-        { from: path.resolve(root, 'LICENSE'), to: 'LICENSE', toType: 'file' },
-        { from: path.resolve(root, 'src/manifest.webmanifest'), to: 'manifest.webmanifest', toType: 'file' },
-        { from: path.resolve(root, 'src/sw.js'), to: 'sw.js', toType: 'file' },
-        { from: path.resolve(root, 'src/icons'), to: 'static/icons' },
-      ],
+      patterns: [{ from: path.resolve(root, 'LICENSE'), to: 'LICENSE', toType: 'file' }],
     }),
   ],
   performance: { hints: false },

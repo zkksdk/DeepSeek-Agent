@@ -1,0 +1,400 @@
+/* 提问面板：贴在输入框顶部，用主题色把「等你回答」和其它内容区分开 */
+.card {
+  --ask-accent: #6d5cff;
+  --ask-accent-soft: rgba(109, 92, 255, 0.12);
+  --ask-accent-line: rgba(109, 92, 255, 0.42);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 16px 11px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background:
+    radial-gradient(120% 130% at 4% 0%, rgba(109, 92, 255, 0.16), transparent 58%),
+    linear-gradient(180deg, rgba(109, 92, 255, 0.05), transparent 72%);
+  cursor: default;
+  animation: askIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body[data-ds-dark-theme] .card {
+  --ask-accent: #b3a4ff;
+  --ask-accent-soft: rgba(140, 120, 255, 0.16);
+  --ask-accent-line: rgba(160, 140, 255, 0.45);
+  background:
+    radial-gradient(120% 130% at 4% 0%, rgba(122, 102, 255, 0.22), transparent 60%),
+    linear-gradient(180deg, rgba(122, 102, 255, 0.07), transparent 72%);
+}
+
+/* 顶部一条缓慢流动的高光，提示这里在等输入 */
+.sweep {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--ask-accent-line),
+    rgba(255, 255, 255, 0.85),
+    var(--ask-accent-line),
+    transparent
+  );
+  background-size: 220% 100%;
+  animation: askSweep 3.2s linear infinite;
+  pointer-events: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  height: 21px;
+  padding: 0 9px 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--ask-accent-line);
+  background: var(--ask-accent-soft);
+  color: var(--ask-accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+body[data-ds-dark-theme] .badge {
+  color: #d8cfff;
+}
+
+.header {
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-caption);
+  font-size: 10.5px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.skip {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-caption);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background-color 0.18s,
+    color 0.18s;
+}
+
+.skip:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.question {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.62;
+  letter-spacing: 0.1px;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-base);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  animation: optionIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i) * 45ms + 70ms);
+  transition:
+    border-color 0.18s,
+    background-color 0.18s,
+    transform 0.18s,
+    box-shadow 0.18s;
+}
+
+.option:hover {
+  border-color: var(--ask-accent-line);
+  background: var(--ask-accent-soft);
+  transform: translateX(2px);
+}
+
+body[data-ds-dark-theme] .option {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+body[data-ds-dark-theme] .option:hover,
+body[data-ds-dark-theme] .optionActive {
+  background: var(--ask-accent-soft);
+}
+
+.option:active {
+  transform: translateX(2px) scale(0.995);
+}
+
+.optionActive {
+  border-color: var(--ask-accent);
+  background: var(--ask-accent-soft);
+  box-shadow: 0 0 0 3px rgba(109, 92, 255, 0.1);
+}
+
+.optionFlash {
+  animation: optionPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.key {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-caption);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.optionActive .key {
+  background: var(--ask-accent);
+  color: #fff;
+}
+
+.optionBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.optionLabel {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.optionDesc {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.check {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: var(--ask-accent);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.18s,
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.optionActive .check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 11px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s;
+}
+
+.input::placeholder {
+  color: var(--dsw-alias-label-caption);
+}
+
+.input:focus {
+  border-color: var(--ask-accent-line);
+  box-shadow: 0 0 0 3px rgba(109, 92, 255, 0.12);
+}
+
+.send {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 15px;
+  border: none;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #6d5cff, #8b5cf6);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    filter 0.18s,
+    transform 0.18s,
+    background 0.18s;
+}
+
+.send:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.send:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.send:disabled {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-caption);
+  cursor: not-allowed;
+}
+
+.hint {
+  color: var(--dsw-alias-label-caption);
+  font-size: 11px;
+  letter-spacing: 0.2px;
+  user-select: none;
+}
+
+@keyframes askIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes askSweep {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+@keyframes optionIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes optionPop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.015);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+html[data-motion='reduced'] .card,
+html[data-motion='reduced'] .option,
+html[data-motion='reduced'] .optionFlash {
+  animation: none;
+}
+
+html[data-motion='reduced'] .sweep {
+  animation: none;
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .option,
+  .optionFlash,
+  .sweep {
+    animation: none;
+  }
+}
+
+/* ---------- 克制风格：用中性底 + 左侧竖条表示「在等你」，不再整片紫光 ---------- */
+body[data-look='calm'] .card {
+  --ask-accent: var(--dsw-alias-brand-primary);
+  --ask-accent-soft: var(--dsw-alias-interactive-bg-hover);
+  --ask-accent-line: var(--dsw-alias-border-l3);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+body[data-look='calm'][data-ds-dark-theme] .card {
+  --ask-accent: var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+body[data-look='calm'] .sweep {
+  display: none;
+}
+
+body[data-look='calm'] .send {
+  background: var(--dsw-alias-button-primary-fill);
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+body[data-look='calm'] .send:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+  filter: none;
+}

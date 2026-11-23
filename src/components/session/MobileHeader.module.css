@@ -1,10 +1,14 @@
 .header {
+  position: relative;
+  z-index: 6;
   display: flex;
   align-items: center;
   flex-shrink: 0;
   box-sizing: border-box;
   height: 60px;
   padding: 12px 10px 4px;
+  /* 顶栏是透明的，消息滚上来由顶部的渐进式模糊压住 */
+  background: none;
 }
 
 .title {

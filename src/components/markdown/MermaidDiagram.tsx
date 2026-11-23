@@ -2,6 +2,7 @@ import { useTranslate } from '../../i18n/index.js'
 import { memo, useEffect, useRef, useState } from 'react'
 import { useTheme } from '../../app/theme.js'
 import { renderMermaid } from '../../services/markdown/mermaid.js'
+import { sanitizeSvg } from '../../utils/sanitizeSvg.js'
 
 /** 流式绘制最新内容、保留上次有效图；回答结束后才显示渲染错误。 */
 export const MermaidDiagram = memo(function MermaidDiagram({
@@ -30,9 +31,11 @@ export const MermaidDiagram = memo(function MermaidDiagram({
         return
       }
       const svg = await renderMermaid(input, dark, () => cancelled)
-      if (svg && !cancelled) {
+      // 最后一公里再净化一次：mermaid 输出会直接 innerHTML
+      const safe = svg ? sanitizeSvg(svg) : ''
+      if (safe && !cancelled) {
         displayedCode = input
-        setResult({ svg, failedCode: null })
+        setResult({ svg: safe, failedCode: null })
       }
     }
 

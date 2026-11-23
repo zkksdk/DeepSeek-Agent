@@ -1,0 +1,444 @@
+/**
+ * 工具调用行：与搜索步骤同一套视觉。
+ * 没有卡片外壳、边框和底色，只有图标 + 目的 + 状态，靠左侧竖线与时间线连起来。
+ */
+
+.wrap {
+  position: relative;
+  max-width: 100%;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-markdown-small);
+}
+
+.withLine::after {
+  content: '';
+  position: absolute;
+  left: 7.5px;
+  top: 31px;
+  width: 1px;
+  height: calc(100% - 24px);
+  background-color: var(--dsw-alias-label-dimmed);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  max-width: 100%;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover .purpose {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.icon {
+  display: flex;
+  flex-shrink: 0;
+  margin-right: 6px;
+  padding: 1px;
+  color: var(--dsw-alias-label-tertiary);
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.wrap[data-status='running'] .icon,
+.wrap[data-status='awaiting'] .icon {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.wrap[data-status='done'] .icon {
+  color: var(--dsw-static-green-500);
+}
+
+.wrap[data-status='error'] .icon,
+.wrap[data-status='denied'] .icon {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* 目的文案是这行的主体，比其他元信息重一点 */
+.purpose {
+  overflow: hidden;
+  flex-shrink: 0;
+  max-width: 52%;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: color 0.2s;
+}
+
+.arg {
+  margin-left: 6px;
+  overflow: hidden;
+  flex-shrink: 1;
+  color: var(--dsw-alias-label-caption);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 文件改动：+N 红、−M 绿，点开直接跳到工作区 diff */
+.change {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: none;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 0.18s;
+
+  &:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    text-decoration: underline;
+  }
+}
+
+.add {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.del {
+  color: var(--dsw-static-green-500);
+}
+
+.badge {
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.status {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.pulse {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.wrap[data-status='running'] .pulse {
+  opacity: 1;
+  animation: toolBlink 1.1s ease-in-out infinite;
+}
+
+.wrap[data-status='awaiting'] .pulse {
+  background: var(--dsw-static-amber-500);
+  opacity: 1;
+  animation: toolBlink 1.4s ease-in-out infinite;
+}
+
+.wrap[data-status='done'] .pulse {
+  background: var(--dsw-static-green-500);
+  opacity: 1;
+}
+
+.wrap[data-status='error'] .pulse,
+.wrap[data-status='denied'] .pulse {
+  background: var(--dsw-alias-state-error-primary);
+  opacity: 1;
+}
+
+.duration {
+  flex-shrink: 0;
+  margin-left: 8px;
+  color: var(--dsw-alias-label-caption);
+  font-family: var(--ds-font-family-code);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detach {
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11.5px;
+  line-height: 16px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--dsw-alias-brand-primary);
+    color: var(--dsw-alias-brand-text);
+  }
+}
+
+.chevron {
+  display: flex;
+  flex-shrink: 0;
+  margin-left: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  opacity: 0.7;
+}
+
+/* 展开区：不加卡片，用极轻的分隔线和小号代码块承接细节 */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 2px 0 8px 26px;
+  padding-left: 10px;
+  border-left: 1px solid var(--dsw-alias-border-l2);
+  animation: toolBodyIn 0.22s var(--ds-ease-in-out) both;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sectionTitle {
+  color: var(--dsw-alias-label-caption);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+
+.askQuestion {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.chip {
+  padding: 2px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.code {
+  max-height: 240px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--dsw-alias-markdown-code-block);
+  color: var(--dsw-alias-label-secondary);
+  font: 12px/1.55 var(--ds-font-family-code);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.more {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-brand-text);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.progress::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--dsw-alias-label-dimmed);
+  border-top-color: var(--dsw-alias-brand-primary);
+  border-radius: 50%;
+  animation: toolSpin 0.8s linear infinite;
+}
+
+.images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.image {
+  max-width: 320px;
+  max-height: 240px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.artifacts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.artifactNames {
+  color: var(--dsw-alias-brand-text);
+  font-size: 12px;
+}
+
+@keyframes toolBodyIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toolBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes toolSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .body,
+  .pulse,
+  .progress::before {
+    animation: none !important;
+  }
+}
+
+/* ---------- 行内结果：动词 + 目标 ---------- */
+/* 「已编辑 ChatInput.tsx」这种短句跟在目的后面，比右下角一个「完成」信息量大得多 */
+
+.result {
+  display: inline-flex;
+  flex-shrink: 1;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  margin-left: 8px;
+  font-size: 12.5px;
+  line-height: 18px;
+}
+
+.verb {
+  flex-shrink: 0;
+  color: var(--dsw-alias-label-caption);
+}
+
+.target {
+  overflow: hidden;
+  max-width: 260px;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wrap[data-status='error'] .result,
+.wrap[data-status='denied'] .result {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* 有行内结果时目的让出宽度，避免两者一起被截断 */
+.result ~ .status {
+  margin-left: 12px;
+}
+
+/* ---------- 窄屏：工具行折成两行，目的优先 ---------- */
+@media (max-width: 640px) {
+  .head {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 32px;
+    padding: 4px 0;
+    row-gap: 1px;
+  }
+
+  .icon {
+    align-self: center;
+  }
+
+  /* 目的占满第一行剩下的宽度 */
+  .purpose {
+    max-width: calc(100% - 60px);
+  }
+
+  /* 「已编辑 xxx」换到第二行，缩进对齐图标之后 */
+  .result {
+    order: 3;
+    width: 100%;
+    max-width: calc(100% - 26px);
+    margin-left: 20px;
+  }
+
+  .change {
+    order: 4;
+    margin-left: 20px;
+  }
+
+  .target {
+    max-width: 160px;
+  }
+
+  .duration {
+    display: none;
+  }
+
+  .status {
+    margin-left: auto;
+  }
+
+  .chevron {
+    margin-left: 2px;
+  }
+
+  .withLine::after {
+    top: 36px;
+  }
+}

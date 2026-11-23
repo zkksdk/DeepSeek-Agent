@@ -9,3 +9,21 @@ build/
 .env.*
 !.env.example
 tmp/
+.tmp/
+
+# Python 桌面端
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+agentdesk.egg-info/
+desktop/*.png
+
+# 扩展打包产物：保留可下载的 zip / crx，签名私钥不入库
+dist-ext/*
+!dist-ext/*.zip
+!dist-ext/*.crx
+!dist-ext/README.md
+
+/.workbuddy/
+/.refact/

@@ -1,14 +1,12 @@
 import clsx from 'clsx'
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 import {
   IconGlobeLanguageOutline14,
   IconPaperclipOutline16,
   IconSendOutline16,
-  IconSettingsOutline16,
   IconStopFill16,
-  IconThinkOutline14,
 } from '../base/icons.js'
-import { setAgentMode, setSearch, setThinking, useSettings } from '../../services/settings.js'
+import { setSearch, useSettings } from '../../services/settings.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { sendMessage, stopReply, useChatStore } from '../../services/chat/store.js'
 import {
@@ -24,7 +22,7 @@ import {
 import { stopReadAloud } from '../../services/speech/readAloud.js'
 import { IconButton } from '../base/IconButton.js'
 import { Tooltip } from '../base/Tooltip.js'
-import { ensureApiKey, openSettings } from '../settings/settingsDialogState.js'
+import { ensureApiKey } from '../settings/settingsDialogState.js'
 import { DragMask, useFileDrop } from './DragMask.js'
 import { showToast } from '../base/toastState.js'
 import { ACCEPT, useUploads } from '../../services/attachments.js'
@@ -32,6 +30,17 @@ import { DraftAttachments } from './DraftAttachments.js'
 import { useVoiceInput } from './useVoiceInput.js'
 import { VoiceButton } from './VoiceButton.js'
 import { Spectrum } from './Spectrum.js'
+import { ModelLevelPicker } from './ModelLevelPicker.js'
+import { ContextRing } from './ContextRing.js'
+import { AskUserPanel } from '../agent/AskUserPanel.js'
+import { ApprovalPanel } from '../agent/ApprovalPanel.js'
+import { PermissionPicker } from './PermissionPicker.js'
+import { WorkspacePicker } from './WorkspacePicker.js'
+import { PromptPicker } from './PromptPicker.js'
+import { TaskButton } from './TaskButton.js'
+import { GoalButton } from './GoalButton.js'
+import { useLiquidGlass } from '../glass/useLiquidGlass.js'
+import { messageTarget, playSendFlight } from './sendFlight.js'
 import { useTranslate } from '../../i18n/index.js'
 import styles from './ChatInput.module.css'
 
@@ -50,32 +59,14 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   const streaming = useChatStore(
     (state) => sessionId !== null && Object.hasOwn(state.streaming, sessionId)
   )
-  const thinking = useSettings((state) => state.thinking)
-  const agentMode = useSettings((state) => state.agentMode)
-  const model = useSettings((state) => state.model)
   const importingHistory = useChatStore((state) => state.importingHistory)
   const isMobile = useIsMobile()
   const search = useSettings((state) => state.search)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const togglesRef = useRef<HTMLDivElement>(null)
-
-  useLayoutEffect(() => {
-    const toggles = togglesRef.current
-    if (!toggles) {
-      return
-    }
-
-    const updateLabels = () => {
-      toggles.classList.remove(styles.collapsedToggles)
-      toggles.classList.toggle(styles.collapsedToggles, toggles.scrollWidth > toggles.clientWidth)
-    }
-
-    updateLabels()
-    const observer = new ResizeObserver(updateLabels)
-    observer.observe(toggles)
-    return () => observer.disconnect()
-  }, [t])
+  // 输入框本体是液态玻璃，背景由折射贴图实时替换
+  const glassRef = useLiquidGlass<HTMLDivElement>()
 
   const acceptFiles = (files: File[]) => {
     if (files.length === 0 || useChatStore.getState().importingHistory || !ensureApiKey()) {
@@ -117,6 +108,19 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     })
   })
 
+  /** 把一段文本插到光标处：提示词选择器与语音转写共用同一套逻辑 */
+  const insertAtCursor = (insert: string) => {
+    const textarea = textareaRef.current
+    const current = getDraft(sessionId).text
+    const start = textarea?.selectionStart ?? current.length
+    const end = textarea?.selectionEnd ?? current.length
+    setText(current.slice(0, start) + insert + current.slice(end))
+    requestAnimationFrame(() => {
+      textarea?.focus({ preventScroll: true })
+      textarea?.setSelectionRange(start + insert.length, start + insert.length)
+    })
+  }
+
   // 欢迎页导入后会话 ID 不变，不能依赖卸载取消语音；订阅开始事件也覆盖快速完成的导入。
   const cancelVoice = voice.cancel
   useEffect(
@@ -143,6 +147,19 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     ) {
       return
     }
+    // 先把这一帧的草稿与位置取快照：sendMessage 会清空草稿，动画需要旧值
+    const draft = getDraft(sessionId)
+    const textarea = textareaRef.current
+    if (textarea) {
+      playSendFlight({
+        from: textarea.getBoundingClientRect(),
+        text: draft.text,
+        images: draft.attachments
+          .filter((item) => item.isImage && item.previewUrl)
+          .map((item) => item.previewUrl as string),
+        to: messageTarget(),
+      })
+    }
     // 文本与上传完成态由提交动作读取最新快照，不使用上一次渲染的草稿。
     if (!ensureApiKey() || !sendMessage(sessionId)) {
       return
@@ -157,6 +174,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
 
   return (
     <div
+      ref={glassRef}
       className={clsx(styles.wrapper, sessionId === null ? styles.home : styles.session)}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
@@ -164,13 +182,15 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         }
       }}
     >
+      <ApprovalPanel sessionId={sessionId} />
+      <AskUserPanel sessionId={sessionId} />
       <DraftAttachments items={attachments} onRetry={retryFile} onRemove={removeFile} />
       <div className={styles.textareaWrapper}>
         <textarea
           ref={textareaRef}
           className={clsx(styles.textarea, recording && isMobile && styles.textareaHidden)}
           placeholder={t('chatInputPlaceholderChat')}
-          rows={2}
+          rows={1}
           // 移动端不自动聚焦，避免一打开就弹出键盘
           autoFocus={!isMobile}
           disabled={importingHistory}
@@ -203,20 +223,12 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         </div>
       </div>
       <div className={styles.functionRow}>
-        {/* 深度思考 / 智能搜索开关，tooltip 在按钮上方 */}
+        {/* 模型 / 思考强度 / 智能搜索，tooltip 在按钮上方 */}
         <div ref={togglesRef} className={styles.toggles}>
-          <Tooltip content={t('deactivatedThinkTooltip')}>
-            <button
-              type="button"
-              className={clsx(styles.toggle, thinking && styles.selected)}
-              aria-label={t('thinkingSwitch')}
-              aria-pressed={thinking}
-              onClick={() => setThinking(!thinking)}
-            >
-              <IconThinkOutline14 />
-              <span className={styles.toggleLabel}>{t('thinkingSwitch')}</span>
-            </button>
-          </Tooltip>
+          <ModelLevelPicker />
+          <PermissionPicker />
+          <WorkspacePicker />
+          <PromptPicker onInsert={insertAtCursor} />
           <Tooltip content={t('deactivatedSearchTooltip')}>
             <button
               type="button"
@@ -229,32 +241,11 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               <span className={styles.toggleLabel}>{t('search')}</span>
             </button>
           </Tooltip>
-          <Tooltip content={t('agentModeDescription')}>
-            <button
-              type="button"
-              className={clsx(styles.toggle, agentMode && styles.selected)}
-              aria-label={t('agentModeLabel')}
-              aria-pressed={agentMode}
-              onClick={() => setAgentMode(!agentMode)}
-            >
-              <IconSettingsOutline16 />
-              <span className={styles.toggleLabel}>{t('agentModeLabel')}</span>
-            </button>
-          </Tooltip>
         </div>
         <div className={styles.right}>
-          {isMobile ? null : (
-            <Tooltip content={t('modelSwitchTooltip')}>
-              <button
-                type="button"
-                className={styles.modelPill}
-                aria-label={t('modelSwitchTooltip')}
-                onClick={() => openSettings('general')}
-              >
-                {model || 'deepseek-flash'}
-              </button>
-            </Tooltip>
-          )}
+          <GoalButton />
+          <TaskButton />
+          <ContextRing sessionId={sessionId} streaming={streaming} />
           <VoiceButton
             status={voice.status}
             disabled={!voice.available}

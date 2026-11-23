@@ -1,4 +1,7 @@
 import { IconPanelLeftOutline16, NewChatIcon } from '../base/icons.js'
+import { IconFolder, IconSpark } from '../agent/ToolIcons.js'
+import { openAgentPanel } from '../agent/agentPanelState.js'
+import { openWorkspacePanel } from '../workspace/workspacePanelState.js'
 import { useTranslate } from '../../i18n/index.js'
 import { setSiderCollapsed } from '../../services/settings.js'
 import { newChat } from '../../services/chat/store.js'
@@ -24,6 +27,20 @@ export const CollapsedSider = () => {
           icon={<NewChatIcon />}
           tooltip={t('newChat')}
           onClick={newChat}
+        />
+        <IconButton
+          size="m"
+          tone="primary"
+          icon={<IconFolder />}
+          tooltip={t('workspaceTitle')}
+          onClick={openWorkspacePanel}
+        />
+        <IconButton
+          size="m"
+          tone="primary"
+          icon={<IconSpark />}
+          tooltip={t('agentPanelTitle')}
+          onClick={() => openAgentPanel()}
         />
       </div>
     </div>

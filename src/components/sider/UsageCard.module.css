@@ -1,0 +1,221 @@
+/* 侧栏底部用量卡片：普通毛玻璃，和设置/工作区保持同一套材质 */
+.wrap {
+  margin: 6px 0 4px;
+  padding: 9px 10px 7px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+}
+
+body[data-ds-dark-theme] .wrap {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+body[data-look='calm'] .wrap {
+  background: var(--dsw-alias-bg-layer-2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title {
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.percent {
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.percent[data-warn] {
+  color: #b45309;
+}
+
+.track {
+  height: 5px;
+  margin: 7px 0 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+body[data-ds-dark-theme] .track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2f5be0, #6d94ff);
+  transition: width 0.45s var(--ds-ease-in-out);
+}
+
+.fill[data-warn] {
+  background: linear-gradient(90deg, #d97706, #f59e0b);
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10.5px;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rate {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 7px;
+  color: #15803d;
+  font-size: 10.5px;
+  line-height: 15px;
+}
+
+.rate[data-peak] {
+  color: #b45309;
+}
+
+body[data-ds-dark-theme] .rate {
+  color: #4ade80;
+}
+
+body[data-ds-dark-theme] .rate[data-peak] {
+  color: #fbbf24;
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.14);
+}
+
+.rate[data-peak] .dot {
+  box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.14);
+}
+
+.rateText {
+  min-width: 0;
+}
+
+.today {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10.5px;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing {
+  display: block;
+  margin-top: 1px;
+  color: var(--dsw-alias-brand-text);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: right;
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.pricing:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.login {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 7px;
+  padding: 7px 0 1px;
+  border: 0;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.login:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.loginIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.loginText {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.loginDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  margin-right: 2px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-dimmed);
+}
+
+.loginDot[data-ready] {
+  background: var(--dsw-static-green-500);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+}
+
+/* 矮屏优先保住会话列表：收起次要信息 */
+@media (max-height: 760px) {
+  .today,
+  .pricing {
+    display: none;
+  }
+
+  .wrap {
+    padding-bottom: 5px;
+  }
+}

@@ -3,13 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#4d6bfe" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="DS Chat" />
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="static/icons/icon-180.png" />
-    <title>API 使用 demo</title>
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <!-- 最小 CSP：只收紧不会被业务用到的能力，避免影响脚本与样式加载 -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="description" content="能调用工具、连接本机与 MCP、读取网页，并在工作区里预览 diff 的 DeepSeek Agent。" />
+    <title>DeepSeek Agent · 工作区、工具与 diff</title>
   </head>
   <body>
     <div id="root"></div>

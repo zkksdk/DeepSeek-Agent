@@ -246,6 +246,10 @@ const MIME_BY_EXT: Record<string, string> = {
   webp: 'image/webp',
 }
 
+/**
+ * 展示附件时的类型：只按后缀判定，不信任浏览器给出的 file.type。
+ * 用来决定「内嵌打开 / 下载 / 不预览」，避免把可执行内容当成可渲染页面处理。
+ */
 const VIEW_MIME_BY_EXT: Record<string, string> = {
   ...MIME_BY_EXT,
   apng: 'image/png',
@@ -275,6 +279,7 @@ export const getFileViewType = (name: string) => {
 
 /** 取文件的 MIME：优先用浏览器给出的类型，缺失时按扩展名推断 */
 export const resolveMimeType = (file: File) => file.type || MIME_BY_EXT[getFileExt(file.name)] || ''
+
 
 export const isImage = (mimeType: string) => mimeType.startsWith('image/')
 

@@ -16,6 +16,9 @@ import { toggleSearchPanel, useSearchPanel } from '../search/searchPanelState.js
 import { ReadAloudButton } from './ReadAloudButton.js'
 import { CopyButton } from './CopyButton.js'
 import { ReplyArea } from './ReplyArea.js'
+import { ArtifactCard } from '../agent/ArtifactCard.js'
+import { WidgetCard } from '../agent/WidgetCard.js'
+import { PreviewCard, type PreviewMeta } from '../agent/PreviewCard.js'
 import { useReplyView } from './useReplyView.js'
 import {
   BranchSwitcher,
@@ -55,6 +58,19 @@ export const AssistantMessage = memo(function AssistantMessage({
     .join('\n\n')
   const copyText = responseText || notice?.text
   const waiting = streaming && view.steps.length === 0 && !view.answer && !message.thinking
+  // 产物在消息尾部统一展示，不必展开工具卡片也能看到
+  const artifacts = view.steps.flatMap((step) =>
+    step.type === 'tool' ? (step.result?.artifacts ?? []) : []
+  )
+  // preview_file 会在工具结果里留下 preview 描述，直接在回答底部展开
+  const previews = view.steps.flatMap((step) =>
+    step.type === 'tool' && step.result?.meta?.preview
+      ? [step.result.meta.preview as PreviewMeta]
+      : []
+  )
+  // 组件紧贴正文展示，其余文件产物放在尾部网格
+  const widgets = artifacts.filter((artifact) => artifact.kind === 'widget')
+  const files = artifacts.filter((artifact) => artifact.kind !== 'widget')
   const summaryEntry = `${message.id}-summary`
   return (
     <div className={styles.message}>
@@ -75,6 +91,22 @@ export const AssistantMessage = memo(function AssistantMessage({
           disableLink={false}
           sources={view.sources}
         />
+      ) : null}
+      {previews.map((preview, index) => (
+        <PreviewCard key={`${preview.id ?? preview.url}-${index}`} preview={preview} />
+      ))}
+      {widgets.map((widget) => (
+        <WidgetCard key={widget.id} meta={widget} />
+      ))}
+      {files.length > 0 ? (
+        <div className={styles.artifacts}>
+          <div className={styles.artifactsTitle}>{t('agentToolArtifacts')}</div>
+          <div className={styles.artifactGrid}>
+            {files.map((artifact) => (
+              <ArtifactCard key={artifact.id} meta={artifact} />
+            ))}
+          </div>
+        </div>
       ) : null}
       {waiting ? (
         <div className={styles.waiting}>
@@ -115,7 +147,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                   className={styles.noticeAction}
                   href={TOP_UP_URL}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                 >
                   {t('topUp')}
                 </a>
@@ -140,12 +172,6 @@ export const AssistantMessage = memo(function AssistantMessage({
       ) : null}
       {streaming ? null : (
         <div className={styles.bottom}>
-          <span className={styles.time}>
-            {new Date(message.createdAt).toLocaleTimeString(undefined, {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </span>
           <BranchSwitcher versions={versions} disabled={busy} onSelect={onSelectVersion} />
           <div className={clsx(styles.actions, isLast && styles.alwaysShow)}>
             {copyText ? <CopyButton text={copyText} /> : null}

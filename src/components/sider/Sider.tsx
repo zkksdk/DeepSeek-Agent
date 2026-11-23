@@ -1,26 +1,26 @@
 import clsx from 'clsx'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { IconPanelLeftOutline16, IconSettingsOutline16, NewChatIcon } from '../base/icons.js'
+import { IconFolder, IconSpark } from '../agent/ToolIcons.js'
+import { openAgentPanel } from '../agent/agentPanelState.js'
+import { openWorkspacePanel } from '../workspace/workspacePanelState.js'
+import { isExtensionAvailable, subscribeExtension } from '../../services/agent/extension.js'
+import { useDesktop } from '../../services/agent/desktop/store.js'
+import { useMcp } from '../../services/agent/mcp/store.js'
 import { setSiderCollapsed } from '../../services/settings.js'
 import { groupSessions } from '../../services/chat/sessionGroups.js'
 import { newChat, removeSession, useChatStore } from '../../services/chat/store.js'
-import {
-  createWorkspace,
-  setActiveWorkspace,
-  useWorkspaces,
-  workspaceOf,
-} from '../../services/chat/workspaces.js'
 import type { SessionSummary } from '../../services/chat/types.js'
 import { Button } from '../base/Button.js'
-import { Select } from '../base/Select.js'
 import { IconButton } from '../base/IconButton.js'
 import { Modal } from '../base/Modal.js'
 import { showToast } from '../base/toastState.js'
 import { openSettings } from '../settings/settingsDialogState.js'
-import { promptText } from '../../services/platform/dialog.js'
 import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
 import { SessionItem } from './SessionItem.js'
+import { UsageCard } from './UsageCard.js'
+import { useLiquidGlass } from '../glass/useLiquidGlass.js'
 import styles from './Sider.module.css'
 
 /** 展开的侧边栏：名称与收起按钮、开启新对话、按时间分组的会话列表、底部设置；移动端放在抽屉里，收起按钮关闭抽屉 */
@@ -28,17 +28,22 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const t = useTranslate()
   const sessions = useChatStore((state) => state.sessions)
   const activeId = useChatStore((state) => state.activeId)
-  const workspaces = useWorkspaces((state) => state.workspaces)
-  const activeWorkspaceId = useWorkspaces((state) => state.activeId)
   const [now, setNow] = useState(Date.now)
-  /** 只展示当前工作区下的会话；历史会话无归属时视为默认工作区 */
-  const visibleSessions = useMemo(
-    () => sessions.filter((session) => workspaceOf(session.workspaceId) === activeWorkspaceId),
-    [sessions, activeWorkspaceId]
-  )
-  const groups = useMemo(() => groupSessions(visibleSessions, now, t), [visibleSessions, now, t])
+  const groups = useMemo(() => groupSessions(sessions, now, t), [sessions, now, t])
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
   const [deletePending, setDeletePending] = useState(false)
+  const desktopReady = useDesktop((state) => state.status === 'connected')
+  const mcpReady = useMcp((state) =>
+    Object.values(state.states).some((item) => item.status === 'ready')
+  )
+  const extensionReady = useSyncExternalStore(
+    subscribeExtension,
+    isExtensionAvailable,
+    isExtensionAvailable
+  )
+  const liveCount = Number(desktopReady) + Number(mcpReady) + Number(extensionReady)
+  // 侧边栏是液态玻璃：整块半透明，靠折射贴图把背后的极光折出厚度
+  const glassRef = useLiquidGlass<HTMLDivElement>()
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
@@ -65,7 +70,7 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   }, [])
 
   return (
-    <div className={clsx(styles.sider, mobile && styles.mobile)}>
+    <div ref={glassRef} className={clsx(styles.sider, mobile && styles.mobile)}>
       <div className={styles.top}>
         <div className={styles.appName}>{t('appName')}</div>
         <IconButton
@@ -75,37 +80,6 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
           tooltipPlacement="bottom"
           onClick={() => (mobile ? closeMobileSider() : setSiderCollapsed(true))}
         />
-      </div>
-      <div className={styles.workspace}>
-        <Select
-          value={activeWorkspaceId}
-          options={workspaces.map((workspace) => ({
-            value: workspace.id,
-            label: workspace.name,
-          }))}
-          onChange={(id) => setActiveWorkspace(id)}
-          placeholder={t('workspaceLabel')}
-          ariaLabel={t('workspaceLabel')}
-          className={styles.workspaceSelect}
-        />
-        <button
-          type="button"
-          className={styles.workspaceAdd}
-          title={t('workspaceNew')}
-          aria-label={t('workspaceNew')}
-          onClick={() => {
-            void promptText({
-              title: t('workspaceNewPrompt'),
-              placeholder: t('workspaceNewPrompt'),
-            }).then((name) => {
-              if (name) {
-                createWorkspace(name)
-              }
-            })
-          }}
-        >
-          +
-        </button>
       </div>
       <button
         type="button"
@@ -138,12 +112,37 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
         </div>
       </div>
       <div className={styles.bottom}>
+        <button
+          type="button"
+          className={styles.settings}
+          onClick={() => {
+            openWorkspacePanel()
+            closeMobileSider()
+          }}
+        >
+          <span className={styles.settingsIcon}>
+            <IconFolder />
+          </span>
+          <span className={styles.settingsLabel}>{t('workspaceTitle')}</span>
+        </button>
+        <button type="button" className={styles.settings} onClick={() => openAgentPanel()}>
+          <span className={styles.settingsIcon}>
+            <IconSpark />
+          </span>
+          <span className={styles.settingsLabel}>{t('agentPanelTitle')}</span>
+          <span
+            className={styles.liveDot}
+            data-live={liveCount > 0}
+            title={liveCount > 0 ? t('agentConnected') : t('agentDisconnected')}
+          />
+        </button>
         <button type="button" className={styles.settings} onClick={() => openSettings('general')}>
           <span className={styles.settingsIcon}>
             <IconSettingsOutline16 />
           </span>
           <span className={styles.settingsLabel}>{t('settings')}</span>
         </button>
+        <UsageCard />
       </div>
       {deleting ? (
         <Modal

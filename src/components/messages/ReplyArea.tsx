@@ -32,6 +32,7 @@ import { Tooltip } from '../base/Tooltip.js'
 import { Markdown } from '../markdown/Markdown.js'
 import { SiteThumbnails } from '../search/SiteLogo.js'
 import { toggleSearchPanel, useSearchPanel } from '../search/searchPanelState.js'
+import { ToolCallCard } from '../agent/ToolCallCard.js'
 import styles from './ReplyArea.module.css'
 import './thinking.markdown.css'
 
@@ -105,7 +106,10 @@ export const ReplyArea = memo(function ReplyArea({
 })
 
 const stepKey = (step: Step, index: number) =>
-  step.type === 'thinking' || step.type === 'text' || step.type === 'search'
+  step.type === 'thinking' ||
+  step.type === 'text' ||
+  step.type === 'search' ||
+  step.type === 'tool'
     ? step.key
     : `${step.type}-${index}`
 
@@ -158,6 +162,8 @@ const StepItem = ({
       return <FindRow step={step} isLast={isLast} />
     case 'read_link':
       return <ReadLinkRow step={step} isLast={isLast} />
+    case 'tool':
+      return <ToolCallCard call={step.call} result={step.result} isLast={isLast} />
     default:
       return null
   }
@@ -283,12 +289,12 @@ const PageLink = ({ page, failedTip }: { page: PageItem; failedTip?: string }) =
       page.status === 'failed' || !page.url ? styles.pageFailed : styles.pageDone
     )}
   >
-    {page.status === 'failed' ? (
+    {page.status === 'failed' || !page.url ? (
       <Tooltip content={failedTip}>
         <span className={styles.pageText}>{page.title}</span>
       </Tooltip>
     ) : (
-      <a className={styles.pageText} href={page.url} target="_blank" rel="noreferrer">
+      <a className={styles.pageText} href={page.url} target="_blank" rel="noopener noreferrer">
         {page.title}
       </a>
     )}

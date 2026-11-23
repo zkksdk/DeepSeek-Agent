@@ -3,7 +3,6 @@ import clsx from 'clsx'
 import { memo, useLayoutEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../../app/viewport.js'
 import { IconEditOutline16 } from '../base/icons.js'
-import { getFileViewType, isImage } from '../../services/attachments.js'
 import { editMessage, retryUpload } from '../../services/chat/store.js'
 import { stopReadAloud } from '../../services/speech/readAloud.js'
 import type { UserMessage as UserMessageType } from '../../services/chat/types.js'
@@ -62,13 +61,15 @@ export const UserMessage = memo(function UserMessage({
   }
 
   return (
-    <div className={clsx(styles.container, isFirst && styles.isFirst)}>
+    <div
+      className={clsx(styles.container, isFirst && styles.isFirst)}
+      data-message-id={message.id}
+    >
       {message.files.length > 0 ? (
         <div
           className={clsx(
             styles.files,
-            message.files.some((file) => !isImage(getFileViewType(file.name))) &&
-              styles.filesWithDocuments
+            message.files.some((file) => !file.isImage) && styles.filesWithDocuments
           )}
         >
           {message.files.map((file) => (
@@ -116,12 +117,6 @@ export const UserMessage = memo(function UserMessage({
         <>
           {message.content ? <div className={styles.bubble}>{message.content}</div> : null}
           <div className={styles.bottom}>
-            <span className={styles.time}>
-              {new Date(message.createdAt).toLocaleTimeString(undefined, {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
             <div className={clsx(styles.actions, isLast && styles.alwaysShow)}>
               {message.content ? <CopyButton text={message.content} /> : null}
               <IconButton

@@ -1,7 +1,13 @@
 import clsx from 'clsx'
 import { memo, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
-import { IconEditOutline16, IconEllipsisOutline16, IconTrashOutline16 } from '../base/icons.js'
+import {
+  IconEditOutline16,
+  IconEllipsisOutline16,
+  IconShareOutline16,
+  IconTrashOutline16,
+} from '../base/icons.js'
+import { openShare } from '../share/shareDialogState.js'
 import { renameSession, selectSession } from '../../services/chat/store.js'
 import type { SessionSummary } from '../../services/chat/types.js'
 import { IconButton } from '../base/IconButton.js'
@@ -64,6 +70,12 @@ export const SessionItem = memo(function SessionItem({
               label: t('sessionItemMenuRenameOption'),
               icon: <IconEditOutline16 />,
               onSelect: () => setEditing(true),
+            },
+            {
+              key: 'share',
+              label: t('shareMenuOption'),
+              icon: <IconShareOutline16 />,
+              onSelect: () => openShare(session.id),
             },
             {
               key: 'delete',

@@ -1,0 +1,36 @@
+/**
+ * 通用玻璃表面：与输入框同一套材质。
+ *
+ * 输入框和侧栏的玻璃写在各自模块里；这里是给弹窗、菜单、提示条复用的那份：
+ * 半透明白底（--lg-tint，由 JS 按参数写入）+ 白色描边 + 顶部一道高光，
+ * 透过来的背景由 backdrop-filter 做折射。
+ *
+ * 外投影不写死：菜单和弹窗的阴影层次不同，各自用 --lg-elevation 覆盖。
+ */
+
+.lg[data-glass] {
+  background-color: rgba(255, 255, 255, var(--lg-tint, 0.11));
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    var(--lg-elevation, 0 14px 34px rgba(16, 24, 40, 0.1), 0 2px 6px rgba(16, 24, 40, 0.05));
+}
+
+body[data-ds-dark-theme] .lg[data-glass] {
+  background-color: rgba(255, 255, 255, var(--lg-tint, 0.11));
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -8px 20px rgba(0, 0, 0, 0.28),
+    var(--lg-elevation, 0 16px 36px rgba(0, 0, 0, 0.42));
+}
+
+/* 不支持折射时多给一点底，保证文字对比度 */
+.lg[data-glass='blur'] {
+  background-color: rgba(255, 255, 255, 0.72);
+}
+
+body[data-ds-dark-theme] .lg[data-glass='blur'] {
+  background-color: rgba(30, 32, 38, 0.78);
+}

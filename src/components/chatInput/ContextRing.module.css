@@ -1,0 +1,77 @@
+.ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  cursor: default;
+  user-select: none;
+
+  svg {
+    display: block;
+  }
+}
+
+.track {
+  stroke: var(--dsw-alias-border-l2);
+  opacity: 0.9;
+}
+
+.value {
+  stroke: var(--dsw-alias-brand-primary);
+  transition:
+    stroke-dashoffset 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    stroke 0.3s ease;
+}
+
+.percent {
+  position: absolute;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--dsw-alias-label-caption);
+  transition: color 0.3s ease;
+}
+
+/* 还没有用量时整圈淡下去，别看起来像坏掉的按钮 */
+.ring[data-empty] .track {
+  opacity: 0.55;
+}
+
+.ring[data-empty] .percent {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* 快满了换色，提示该开新会话了 */
+.ring[data-level='high'] .value {
+  stroke: var(--dsw-static-amber-500);
+}
+
+.ring[data-level='high'] .percent {
+  color: var(--dsw-static-amber-600);
+}
+
+.ring[data-level='full'] .value {
+  stroke: var(--dsw-alias-state-error-primary);
+}
+
+.ring[data-level='full'] .percent {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* 生成中轻微呼吸，和状态条的小圆点呼应 */
+.active .value {
+  filter: drop-shadow(0 0 3px rgba(57, 100, 254, 0.35));
+}
+
+.active .percent {
+  color: var(--dsw-alias-label-secondary);
+}
+
+body[data-ds-dark-theme] .active .value {
+  filter: drop-shadow(0 0 4px rgba(103, 158, 254, 0.45));
+}

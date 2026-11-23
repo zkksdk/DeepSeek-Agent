@@ -1,0 +1,208 @@
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.blobA,
+.blobB,
+.blobC {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  will-change: transform;
+}
+
+/* 左侧一抹冷光：侧边栏是液态玻璃，背后得有点结构才折得出来 */
+.rail {
+  position: absolute;
+  top: -8%;
+  bottom: -8%;
+  left: -60px;
+  width: 320px;
+  background: linear-gradient(
+    180deg,
+    rgba(57, 100, 254, 0.16) 0%,
+    rgba(64, 196, 255, 0.09) 46%,
+    rgba(139, 92, 246, 0.14) 100%
+  );
+  filter: blur(36px);
+  opacity: 0.8;
+  mask-image: linear-gradient(90deg, #000 0%, #000 58%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 58%, transparent 100%);
+}
+
+body[data-ds-dark-theme] .rail {
+  background: linear-gradient(
+    180deg,
+    rgba(57, 100, 254, 0.3) 0%,
+    rgba(64, 196, 255, 0.16) 46%,
+    rgba(139, 92, 246, 0.26) 100%
+  );
+  opacity: 0.75;
+}
+
+/* 主色：品牌蓝，位于右上，缓慢漂移 */
+.blobA {
+  top: -18%;
+  right: -8%;
+  width: 46vw;
+  height: 46vw;
+  min-width: 360px;
+  min-height: 360px;
+  background: radial-gradient(closest-side, rgba(57, 100, 254, 0.30), transparent 72%);
+  animation: auroraDriftA 26s ease-in-out infinite alternate;
+}
+
+/* 青色：左下，作为冷色平衡 */
+.blobB {
+  bottom: -22%;
+  left: -10%;
+  width: 42vw;
+  height: 42vw;
+  min-width: 320px;
+  min-height: 320px;
+  background: radial-gradient(closest-side, rgba(64, 196, 255, 0.22), transparent 72%);
+  animation: auroraDriftB 32s ease-in-out infinite alternate;
+}
+
+/* 紫罗兰：中部偏下，增加层次 */
+.blobC {
+  top: 42%;
+  left: 46%;
+  width: 34vw;
+  height: 34vw;
+  min-width: 260px;
+  min-height: 260px;
+  background: radial-gradient(closest-side, rgba(139, 92, 246, 0.17), transparent 70%);
+  animation: auroraDriftC 38s ease-in-out infinite alternate;
+}
+
+/* 点阵：只在中心区域可见，边缘淡出 */
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(38, 49, 72, 0.14) 0.6px, transparent 0.6px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 70% 62% at 50% 42%, #000 12%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 62% at 50% 42%, #000 12%, transparent 78%);
+  opacity: 0.5;
+  animation: gridBreathe 9s ease-in-out infinite;
+}
+
+/* 跟随光标的柔光，坐标由 JS 写入 */
+.cursor {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    460px circle at var(--mx, 50%) var(--my, 30%),
+    rgba(57, 100, 254, 0.105),
+    transparent 68%
+  );
+  transition: background 0.2s linear;
+}
+
+/* 顶部与底部轻压暗，让内容区更聚焦 */
+.vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26), transparent 18%),
+    radial-gradient(ellipse 90% 70% at 50% 110%, transparent 46%, rgba(255, 255, 255, 0.2));
+}
+
+body[data-ds-dark-theme] .grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.1) 0.6px, transparent 0.6px);
+  opacity: 0.32;
+}
+
+body[data-ds-dark-theme] .blobA {
+  background: radial-gradient(closest-side, rgba(57, 100, 254, 0.26), transparent 72%);
+}
+
+body[data-ds-dark-theme] .blobB {
+  background: radial-gradient(closest-side, rgba(64, 196, 255, 0.16), transparent 72%);
+}
+
+body[data-ds-dark-theme] .blobC {
+  background: radial-gradient(closest-side, rgba(139, 92, 246, 0.18), transparent 70%);
+}
+
+body[data-ds-dark-theme] .cursor {
+  background: radial-gradient(
+    460px circle at var(--mx, 50%) var(--my, 30%),
+    rgba(103, 158, 254, 0.1),
+    transparent 68%
+  );
+}
+
+body[data-ds-dark-theme] .vignette {
+  background:
+    linear-gradient(180deg, rgba(15, 17, 21, 0.6), transparent 26%),
+    radial-gradient(ellipse 90% 70% at 50% 110%, transparent 40%, rgba(15, 17, 21, 0.5));
+}
+
+/* 精简动效：光斑静止，仍保留配色与点阵 */
+.root[data-motion='reduced'] .blobA,
+.root[data-motion='reduced'] .blobB,
+.root[data-motion='reduced'] .blobC,
+.root[data-motion='reduced'] .grid {
+  animation: none;
+}
+
+.root[data-motion='reduced'] .cursor {
+  display: none;
+}
+
+/* 网格轻微呼吸，避免整页完全静止 */
+@keyframes gridBreathe {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes auroraDriftA {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-6vw, 5vh, 0) scale(1.12);
+  }
+}
+
+@keyframes auroraDriftB {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.06);
+  }
+  to {
+    transform: translate3d(7vw, -4vh, 0) scale(0.96);
+  }
+}
+
+@keyframes auroraDriftC {
+  from {
+    transform: translate3d(-2vw, 2vh, 0) scale(0.94);
+  }
+  to {
+    transform: translate3d(3vw, -6vh, 0) scale(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blobA,
+  .blobB,
+  .blobC,
+  .grid {
+    animation: none !important;
+  }
+
+  .cursor {
+    display: none;
+  }
+}

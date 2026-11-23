@@ -13,3 +13,9 @@ declare module 'prismjs/components/*' {}
 
 /** KaTeX 化学公式扩展通过副作用注册到 KaTeX */
 declare module 'katex/contrib/mhchem' {}
+
+/** asset/resource：文本资源单独发文件，import 得到的是 URL */
+declare module '*.txt' {
+  const url: string
+  export default url
+}

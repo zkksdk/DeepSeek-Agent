@@ -39,7 +39,7 @@ export const Link = memo(function Link({
   const href = sanitizeUrl(node.url)
 
   return (
-    <a href={href} title={node.title || undefined} target="_blank" rel="noreferrer">
+    <a href={href} title={node.title || undefined} target="_blank" rel="noopener noreferrer">
       {children}
     </a>
   )
@@ -49,7 +49,7 @@ export const Link = memo(function Link({
 export function ImageAsLink({ node }: { node: Image }) {
   const url = sanitizeUrl(node.url)
   return (
-    <a href={url} title={node.title ?? ''} target="_blank" rel="noreferrer">
+    <a href={url} title={node.title ?? ''} target="_blank" rel="noopener noreferrer">
       {url}
     </a>
   )

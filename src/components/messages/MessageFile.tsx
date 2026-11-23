@@ -34,7 +34,8 @@ export const MessageFile = ({
   onRetry: (() => void) | null
 }) => {
   const t = useTranslate()
-  const { image, url, link } = useFileView(file.id, file.name)
+  const view = useFileView(file.id, file.name)
+  const url = view.url
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const upload = useUploadState(file)
   const uploading = upload?.status === 'uploading'
@@ -44,7 +45,7 @@ export const MessageFile = ({
 
   const retry = retryable ? onRetry : null
 
-  if (image && url !== null) {
+  if (view.image && url !== null) {
     const preview = url ? (
       failedUrl === url ? (
         <span className={styles.failedIcon} role="img" aria-label={file.name}>
@@ -112,9 +113,9 @@ export const MessageFile = ({
       )
     }
 
-    // 正常态：链接到原件
-    return link ? (
-      <a className={clsx(styles.image, styles.imageThumb)} {...link} title={file.name}>
+    // 正常态：按扩展名决定内嵌打开还是下载，SVG 走下载，避免在本站渲染
+    return view.link ? (
+      <a className={clsx(styles.image, styles.imageThumb)} title={file.name} {...view.link}>
         {preview}
       </a>
     ) : (
@@ -130,7 +131,7 @@ export const MessageFile = ({
       status={uploading ? 'uploading' : failed ? 'error' : 'done'}
       error={errorText}
       onRetry={retry ?? undefined}
-      link={link}
+      link={upload ? undefined : view.link}
     />
   )
 }

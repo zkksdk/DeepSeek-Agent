@@ -2,26 +2,32 @@
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: row;
-}
-
-.mainCol {
-  position: relative;
-  display: flex;
   flex-direction: column;
-  flex: 1;
-  min-width: 0;
 }
 
 .header {
+  position: relative;
+  z-index: 6;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   flex-shrink: 0;
   height: 60px;
   padding: 12px 18px 0;
   box-sizing: border-box;
-  background: var(--dsw-alias-bg-base);
+  /* 标题栏不再铺底色，背后的渐进式模糊负责把内容压下去 */
+  background: none;
+}
+
+.topBlur {
+  left: 0;
+  right: 0;
+  /* 列表在顶部时隐藏，滚起来再淡入，避免糊掉第一条消息 */
+  opacity: 0;
+  transition: opacity 0.28s var(--ds-ease-in-out);
+}
+
+.topBlurVisible {
+  opacity: 1;
 }
 
 .title {
@@ -32,6 +38,11 @@
   text-overflow: ellipsis;
   font: var(--dsw-font-s-strong-14);
   color: var(--dsw-alias-label-primary);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55);
+}
+
+body[data-ds-dark-theme] .title {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
 .withCollapsedSider {
@@ -49,13 +60,15 @@
   width: calc(var(--message-list-max-width) - 64px);
   max-width: calc(100% - 32px);
   margin: auto auto 0;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    transparent 30%,
-    var(--dsw-alias-bg-base) 30%,
-    var(--dsw-alias-bg-base) 100%
-  );
+  /* 容器自身不再铺底色，底部由渐进式模糊 + 输入框玻璃承担层次 */
+  background: none;
+}
+
+.bottomBlur {
+  left: calc(50% - 50vw);
+  right: calc(50% - 50vw);
+  /* 宽度撑满视口，模糊带不会在输入框两侧留出一条硬边 */
+  border-radius: 0;
 }
 
 .caveat {
@@ -78,37 +91,20 @@
   }
 }
 
-.traceButton {
-  flex: none;
-  height: 30px;
-  padding: 0 12px;
-  margin-left: auto;
-  border-radius: 15px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: border-color var(--ds-transition-duration) var(--ds-ease-in-out);
+/* ---------- 窄屏：标题只留一行，别把内容区往下顶 ---------- */
+@media (max-width: 640px) {
+  .title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
 }
 
-.traceButton:hover,
-.traceButtonActive {
-  border-color: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-brand-primary);
-}
-
-.mobileTraceButton {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 5;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 15px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-  cursor: pointer;
+/* ---------- 窄屏：标题只留一行，别把内容区往下顶 ---------- */
+@media (max-width: 640px) {
+  .title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
 }

@@ -138,12 +138,19 @@ const readBlock = (value: unknown): OutputBlockStart | null => {
         signature: isOptionalString(value.signature) ? value.signature : undefined,
       } as OutputBlockStart
     }
-    case 'tool_use':
-      // 客户端工具调用：必须保留完整块，参数后续由 input_json_delta 补充
+    case 'tool_use': {
+      // 客户端工具调用：id/name 必须可用；input 允许为空对象，真实参数由增量拼接。
       if (!isString(value.id) || !isString(value.name)) {
         return null
       }
-      return value as OutputBlockStart
+      return {
+        ...value,
+        type: 'tool_use',
+        id: value.id,
+        name: value.name,
+        input: isRecord(value.input) ? value.input : {},
+      }
+    }
     default:
       return null
   }
@@ -163,8 +170,8 @@ const readDelta = (value: unknown): ContentBlockDelta | null => {
       return isString(value.signature) ? (value as ContentBlockDelta) : null
     case 'citations_delta':
       return isCitation(value.citation) ? (value as ContentBlockDelta) : null
-    // 客户端工具参数以增量 JSON 分片下发，必须透传，否则工具只会收到空参数
     case 'input_json_delta':
+      // 工具参数分片：可能是空串，仍要保留以维持顺序
       return isString(value.partial_json) ? (value as ContentBlockDelta) : null
     default:
       return null

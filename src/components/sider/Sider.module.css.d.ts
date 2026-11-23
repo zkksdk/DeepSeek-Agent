@@ -2,9 +2,6 @@ declare const styles: {
   readonly "sider": string;
   readonly "top": string;
   readonly "appName": string;
-  readonly "workspace": string;
-  readonly "workspaceSelect": string;
-  readonly "workspaceAdd": string;
   readonly "newChat": string;
   readonly "newChatIcon": string;
   readonly "listWrap": string;

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentdesk"
+version = "1.0.0"
+description = "Expose local files, shell, Python and stdio MCP servers to a browser agent."
+requires-python = ">=3.9"
+dependencies = ["rich>=13.7", "websockets>=13.0"]
+
+[project.scripts]
+agentdesk = "agentdesk.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["agentdesk*"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "ruff>=0.4"]
+# 移植工具的可选能力：图片、PDF、Office、二维码、时区数据
+media = ["Pillow>=10.0", "pypdf>=4.0", "qrcode>=7.4"]
+office = ["python-docx>=1.1", "openpyxl>=3.1", "python-pptx>=0.6.23"]
+tz = ["tzdata>=2024.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"

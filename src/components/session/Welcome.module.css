@@ -1,6 +1,7 @@
 .container {
   position: absolute;
   inset: 0;
+  z-index: 1;
   display: flex;
 }
 
@@ -13,26 +14,305 @@
   width: 100%;
   max-width: var(--message-list-max-width);
   margin: auto;
-  padding: 0 32px 64px;
+  padding: 0 32px 56px;
+}
+
+/* 顶部小徽标：把「Agent 运行时」的存在感做出来，但不抢标题 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 18px;
+  padding: 4px 11px 4px 9px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(10px);
+  animation: welcomeIn 0.5s var(--ds-ease-in-out) both;
+}
+
+body[data-ds-dark-theme] .badge {
+  background: rgba(33, 33, 35, 0.5);
+}
+
+.badgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-static-green-500);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+  animation: welcomePulse 2.6s ease-in-out infinite;
+}
+
+.badgeSep {
+  width: 1px;
+  height: 10px;
+  background: var(--dsw-alias-border-l2);
 }
 
 .greeting {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 21px;
-  font-size: 24px;
-  line-height: 32px;
+  margin: 0 0 10px;
+  font-size: 30px;
+  line-height: 40px;
   font-weight: 600;
   text-align: center;
   color: var(--dsw-alias-label-primary);
+  animation: welcomeIn 0.55s var(--ds-ease-in-out) 40ms both;
 }
 
-@media (max-width: 439px) {
+/* 文字本身保持深色，用背后的光带缓慢扫过，避免整行渐变显得廉价 */
+.greetingText {
+  position: relative;
+  display: inline-block;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -6% -2%;
+    z-index: -1;
+    border-radius: 12px;
+    background: linear-gradient(
+      100deg,
+      transparent 20%,
+      rgba(57, 100, 254, 0.1) 42%,
+      rgba(122, 200, 255, 0.16) 52%,
+      transparent 74%
+    );
+    background-size: 220% 100%;
+    filter: blur(16px);
+    opacity: 0.85;
+    animation: welcomeSheen 6.5s ease-in-out infinite;
+    pointer-events: none;
+  }
+}
+
+.tagline {
+  max-width: 520px;
+  margin: 0 0 20px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13.5px;
+  line-height: 1.6;
+  text-align: center;
+  animation: welcomeIn 0.55s var(--ds-ease-in-out) 80ms both;
+}
+
+.caps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  margin-bottom: 22px;
+  animation: welcomeIn 0.55s var(--ds-ease-in-out) 120ms both;
+}
+
+.cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.03);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition:
+    transform 0.2s var(--ds-ease-in-out),
+    border-color 0.2s,
+    box-shadow 0.2s,
+    color 0.2s;
+
+  &:hover {
+    transform: translateY(-1px);
+    border-color: rgba(57, 100, 254, 0.3);
+    color: var(--dsw-alias-label-primary);
+    box-shadow: 0 6px 18px -14px rgba(57, 100, 254, 0.8);
+  }
+
+  & svg {
+    color: var(--dsw-alias-label-tertiary);
+  }
+}
+
+body[data-ds-dark-theme] .cap {
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: none;
+}
+
+body[data-ds-dark-theme] .cap:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.capDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-dimmed);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.cap[data-live='true'] .capDot {
+  background: var(--dsw-static-green-500);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
+}
+
+.inputWrap {
+  width: 100%;
+  animation: welcomeIn 0.6s var(--ds-ease-in-out) 160ms both;
+}
+
+.quick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+}
+
+.quickCard {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.035);
+  backdrop-filter: blur(8px);
+  animation: welcomeIn 0.5s var(--ds-ease-in-out) both;
+  transition:
+    transform 0.22s var(--ds-ease-in-out),
+    border-color 0.22s,
+    background 0.22s,
+    color 0.22s;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      120px circle at var(--x, 50%) var(--y, 50%),
+      rgba(57, 100, 254, 0.1),
+      transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(57, 100, 254, 0.28);
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--dsw-alias-label-primary);
+    box-shadow: 0 10px 28px -22px rgba(16, 24, 40, 0.6);
+
+    &::before {
+      opacity: 1;
+    }
+
+    & .quickArrow {
+      opacity: 1;
+      transform: translate(1px, -1px);
+    }
+  }
+}
+
+body[data-ds-dark-theme] .quickCard {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: none;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.075);
+  }
+}
+
+body[data-ds-dark-theme] .greetingText::after {
+  background: linear-gradient(
+    100deg,
+    transparent 22%,
+    rgba(57, 100, 254, 0.2) 44%,
+    rgba(64, 196, 255, 0.14) 54%,
+    transparent 76%
+  );
+  opacity: 0.55;
+}
+
+.quickText {
+  position: relative;
+  flex: 1;
+}
+
+.quickArrow {
+  position: relative;
+  color: var(--dsw-alias-brand-text);
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.caveat {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 6px 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  user-select: none;
+}
+
+@keyframes welcomeIn {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes welcomeSheen {
+  0%,
+  100% {
+    background-position: 120% 0;
+  }
+  50% {
+    background-position: -20% 0;
+  }
+}
+
+@keyframes welcomePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.04);
+  }
+}
+
+@media (max-width: 640px) {
   .greeting {
-    font-size: 20px;
-    line-height: 28px;
-    font-weight: 500;
+    font-size: 22px;
+    line-height: 30px;
+  }
+
+  .quick {
+    display: none;
   }
 }
 
@@ -50,19 +330,108 @@
     padding: 0 16px env(safe-area-inset-bottom);
   }
 
-  .greeting {
-    flex-shrink: 0;
-    margin: auto 0;
+  .badge,
+  .tagline,
+  .caps {
+    display: none;
   }
 
-  .caveat {
+  .greeting {
     flex-shrink: 0;
-    width: 100%;
-    padding: 6px 0;
-    font-size: 11px;
-    line-height: 16px;
-    text-align: center;
-    color: var(--dsw-alias-label-tertiary);
-    user-select: none;
+    margin: auto 0 18px;
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 500;
   }
+
+  .inputWrap {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge,
+  .greeting,
+  .tagline,
+  .caps,
+  .inputWrap,
+  .quickCard,
+  .badgeDot,
+  .greetingText::after {
+    animation: none !important;
+  }
+}
+
+html[data-motion='reduced'] .badge,
+html[data-motion='reduced'] .greeting,
+html[data-motion='reduced'] .tagline,
+html[data-motion='reduced'] .caps,
+html[data-motion='reduced'] .inputWrap,
+html[data-motion='reduced'] .quickCard,
+html[data-motion='reduced'] .badgeDot,
+html[data-motion='reduced'] .greetingText::after {
+  animation: none !important;
+}
+
+/* ---------- 克制风格：欢迎页不再像落地页 ---------- */
+body[data-look='calm'] .greeting {
+  font-size: 23px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+body[data-look='calm'] .badge {
+  border-color: var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+  /* 装饰性小徽标不需要实时模糊，省掉一次 backdrop-filter 采样 */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body[data-look='calm'] .badgeDot {
+  box-shadow: none;
+  animation: none;
+}
+
+body[data-look='calm'] .greetingText::after {
+  display: none;
+}
+
+body[data-look='calm'] .cap {
+  border-radius: 8px;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body[data-look='calm'] .cap:hover {
+  transform: none;
+  border-color: var(--dsw-alias-border-l3);
+  box-shadow: none;
+}
+
+body[data-look='calm'] .quickCard {
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: 10px;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body[data-look='calm'] .quickCard::before {
+  display: none;
+}
+
+body[data-look='calm'] .quickCard:hover {
+  transform: none;
+  border-color: var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-interactive-bg-hover);
+  box-shadow: none;
+}
+
+body[data-look='calm'][data-ds-dark-theme] .quickCard,
+body[data-look='calm'][data-ds-dark-theme] .quickCard:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--dsw-alias-border-l2);
 }

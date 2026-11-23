@@ -52,3 +52,44 @@ body.change-theme *::after {
     overscroll-behavior-y: none;
   }
 }
+
+/* ---------- 动效开关 ----------
+   类名带 CSS Modules 的局部名（[local]-[hash]），所以用属性包含选择器统一收口，
+   组件里不用为每个动画单独判断设置。 */
+
+:root {
+  --ds-anim-scale: 1;
+}
+
+html[data-transitions='off'] *,
+html[data-transitions='off'] *::before,
+html[data-transitions='off'] *::after {
+  transition: none !important;
+}
+
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+html[data-shimmer='off'] [class*='shimmer'],
+html[data-motion='reduced'] [class*='shimmer'] {
+  animation: none !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor;
+}
+
+html[data-pulse='off'] [class*='sweep'],
+html[data-pulse='off'] [class*='pulse'],
+html[data-pulse='off'] [class*='scan'] {
+  animation: none !important;
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html [class*='shimmer'] {
+    animation: none !important;
+  }
+}

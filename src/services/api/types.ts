@@ -4,11 +4,10 @@
  * 声明 deepseek_web_search / deepseek_read_url 或设置 safety_check.level 为 high 时进入扩展模式。
  */
 
-/**
- * 模型名。默认 deepseek-flash；可在设置中改为服务端支持的任意模型
- * （如 deepseek-v4-pro、聚合网关或自建的 Anthropic 兼容服务模型 ID）。
- */
-export type ChatModel = string
+export type ChatModel = 'deepseek-flash' | 'deepseek-v4-pro'
+
+/** 思考强度；不同厂商命名不同，这里按 Anthropic / OpenAI 兼容字段同时下发 */
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'max'
 
 // ---------- 响应：内容块 ----------
 
@@ -122,35 +121,11 @@ export type ServerToolBlock =
   | WebSearchToolResultBlock
   | WebFetchToolResultBlock
 
-/** 用于识别客户端工具调用的内容块类型 */
+/**
+ * 客户端工具调用块。content_block_start 时 input 通常为空对象，
+ * 完整参数由后续 input_json_delta 分片拼成 JSON 后解析。
+ */
 export type ToolUseBlock = { type: 'tool_use'; id: string; name: string; input: unknown }
-
-/** 客户端工具定义（Anthropic 兼容 tools），用于让模型自主调用本地能力 */
-export type ClientToolDefinition = {
-  name: string
-  description: string
-  input_schema: {
-    type: 'object'
-    properties: Record<string, unknown>
-    required?: string[]
-  }
-}
-
-/** 回传给模型的历史工具调用块 */
-export type ClientToolUseBlockParam = {
-  type: 'tool_use'
-  id: string
-  name: string
-  input: unknown
-}
-
-/** 工具执行结果块，放在 user 消息里回传给模型 */
-export type ToolResultBlockParam = {
-  type: 'tool_result'
-  tool_use_id: string
-  content: string
-  is_error?: boolean
-}
 
 // ---------- 请求 ----------
 
@@ -183,7 +158,24 @@ export type AssistantBlockParam =
   | ServerToolUseBlockParam
   | WebSearchToolResultBlockParam
   | WebFetchToolResultBlockParam
-  | ClientToolUseBlockParam
+  /** 客户端工具调用原样回传，模型据此衔接后续参数 */
+  | ToolUseBlock
+
+/** 工具结果里的内联图片：base64 直接下发，不需要先上传 */
+export type Base64ImageParam = {
+  type: 'image'
+  source: { type: 'base64'; media_type: string; data: string }
+}
+
+export type ToolResultContentParam = { type: 'text'; text: string } | Base64ImageParam
+
+/** 工具结果必须以 user 消息回传，content 支持字符串或「文本 + 图片」块数组 */
+export type ToolResultBlockParam = {
+  type: 'tool_result'
+  tool_use_id: string
+  content: string | ToolResultContentParam[]
+  is_error?: boolean
+}
 
 /** 末尾 assistant 自动触发继续生成，无需 prefix 字段 */
 export type MessageParam =
@@ -207,12 +199,45 @@ export type DeepseekReadUrlTool = {
   name: 'deepseek_read_url'
 }
 
+/** 客户端工具的 JSON Schema 子集，足够描述本应用的参数 */
+export type JsonSchema = {
+  type: 'object'
+  properties?: Record<string, unknown>
+  required?: string[]
+  additionalProperties?: boolean
+  [key: string]: unknown
+}
+
+/**
+ * 自定义工具声明（Anthropic 兼容格式）。服务端据此前置工具定义，
+ * 模型以 tool_use 块返回调用意图，由客户端执行后以 tool_result 回传。
+ */
+export type ClientToolDefinition = {
+  name: string
+  description: string
+  input_schema: JsonSchema
+}
+
+export type RequestTool =
+  | DeepseekWebSearchTool
+  | DeepseekReadUrlTool
+  | ClientToolDefinition
+
 export type CreateMessageRequest = {
-  model: ChatModel
+  /** 远端拉取的模型 id 均以字符串透传 */
+  model: ChatModel | string
   system: string
   messages: MessageParam[]
-  thinking: { type: 'enabled' | 'disabled' }
-  tools: (DeepseekWebSearchTool | DeepseekReadUrlTool | ClientToolDefinition)[]
+  thinking: { type: 'enabled' | 'disabled'; budget_tokens?: number }
+  /** 思考强度；关闭思考时不带该字段 */
+  reasoning_effort?: ReasoningEffort
+  /** 采样温度 0-2，不传则用服务端默认值 */
+  temperature?: number
+  /** 核采样 0-1，不传则用服务端默认值 */
+  top_p?: number
+  tools: RequestTool[]
+  /** 只允许模型在给定工具中选择时使用；默认交由模型自行决定 */
+  tool_choice?: { type: 'auto' | 'any' | 'tool'; name?: string }
   safety_check: { level: 'high' }
   title?: { enabled: boolean }
 }

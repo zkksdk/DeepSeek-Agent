@@ -1,4 +1,4 @@
-// 上传图片的长边上限，单位为像素。
+// 上传图片的长边上限，单位为像素。超过后服务端会拒绝，因此在客户端先缩小。
 const MAX_IMAGE_EDGE = 4096
 
 const readUploadImage = async (blob: Blob) => {
@@ -21,7 +21,18 @@ export const isUploadImageOversized = async (blob: Blob): Promise<boolean> =>
 /** 图片在尺寸上限内时返回原文件，超限时生成按比例缩小的上传副本。 */
 export const resizeUploadImage = async (file: File, signal?: AbortSignal): Promise<File> => {
   signal?.throwIfAborted()
-  const { image, longestEdge } = await readUploadImage(file)
+  // GIF 等动图缩放后只剩一帧，保持原样交给服务端判断
+  if (file.type === 'image/gif') {
+    return file
+  }
+  let read: Awaited<ReturnType<typeof readUploadImage>>
+  try {
+    read = await readUploadImage(file)
+  } catch {
+    // 解不开的图片（如 HEIC）直接上传，让服务端给出明确的错误
+    return file
+  }
+  const { image, longestEdge } = read
   signal?.throwIfAborted()
   if (longestEdge <= MAX_IMAGE_EDGE) {
     return file
@@ -36,15 +47,15 @@ export const resizeUploadImage = async (file: File, signal?: AbortSignal): Promi
   try {
     const context = canvas.getContext('2d')
     if (!context) {
-      throw new Error('Cannot resize image')
+      throw new Error('无法创建画布上下文')
     }
-    // drawImage 将整张图重采样到目标尺寸的画布上。动图在这一步只绘制一帧。
+    // drawImage 将整张图重采样到目标尺寸的画布上。
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
     // toBlob 把缩放后的像素编码成文件数据。JPEG 和 WebP 优先沿用原格式，其余使用 PNG。
     const type = file.type === 'image/jpeg' || file.type === 'image/webp' ? file.type : 'image/png'
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
-        (result) => (result ? resolve(result) : reject(new Error('Cannot encode image'))),
+        (result) => (result ? resolve(result) : reject(new Error('无法编码图片'))),
         type,
         // 压缩质量
         1

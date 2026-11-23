@@ -1,7 +1,8 @@
 import clsx from 'clsx'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAnchoredPosition, useDismiss } from './anchored.js'
+import { useGlassAttach } from '../glass/useLiquidGlass.js'
 import { IconCheckOutline16, IconChevronDownOutline14 } from './icons.js'
 import styles from './Select.module.css'
 
@@ -37,6 +38,15 @@ export const Select = <T extends string>({
   >(open, { align: 'end', maxHeight: 320, minSpace: 160 })
   // Esc 只关菜单，不让外层弹窗一起关闭
   useDismiss(open, [anchorRef, floatingRef], () => setOpen(false), { captureEscape: true })
+  const glassRef = useGlassAttach({ tier: 'frost', tint: 0.18 })
+  // 内联 ref 每次渲染都会重挂玻璃，锚点计算又会在滚动时触发渲染，这里固定下来
+  const menuRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      floatingRef.current = el
+      glassRef(el)
+    },
+    [floatingRef, glassRef]
+  )
 
   return (
     <>
@@ -62,8 +72,8 @@ export const Select = <T extends string>({
       {open && !disabled
         ? createPortal(
             <div
-              ref={floatingRef}
-              className={styles.menu}
+              ref={menuRef}
+              className={clsx(styles.menu, 'lg')}
               style={position ?? undefined}
               role="listbox"
               aria-label={ariaLabel}

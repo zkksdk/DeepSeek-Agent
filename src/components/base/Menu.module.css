@@ -45,3 +45,8 @@
     background-color: var(--dsw-alias-interactive-bg-hover-danger);
   }
 }
+
+/* 玻璃态下沿用菜单自己的投影层次 */
+.menu {
+  --lg-elevation: 0 0 1px rgba(0, 0, 0, 0.2), 0 12px 32px rgba(0, 0, 0, 0.12);
+}

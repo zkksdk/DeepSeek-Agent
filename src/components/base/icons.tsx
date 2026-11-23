@@ -523,3 +523,48 @@ export const IconToastError16 = () => (
     />
   </svg>
 )
+
+export const IconShield = () => (
+  <svg width={14} height={14} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M8 1.9 13 3.7v4.1c0 3.05-1.98 5.35-5 6.4-3.02-1.05-5-3.35-5-6.4V3.7L8 1.9Z"
+      stroke="currentColor"
+      strokeWidth={1.35}
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+export const IconShieldFull = () => (
+  <svg width={14} height={14} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M8 1.9 13 3.7v4.1c0 3.05-1.98 5.35-5 6.4-3.02-1.05-5-3.35-5-6.4V3.7L8 1.9Z"
+      fill="currentColor"
+      fillOpacity={0.16}
+      stroke="currentColor"
+      strokeWidth={1.35}
+      strokeLinejoin="round"
+    />
+    <path
+      d="m5.7 7.9 1.6 1.6 3.1-3.1"
+      stroke="currentColor"
+      strokeWidth={1.35}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+export const IconShareOutline16 = () => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="11.9" cy="3.6" r="1.9" stroke="currentColor" strokeWidth={1.3} />
+    <circle cx="4.1" cy="8" r="1.9" stroke="currentColor" strokeWidth={1.3} />
+    <circle cx="11.9" cy="12.4" r="1.9" stroke="currentColor" strokeWidth={1.3} />
+    <path
+      d="M5.8 7.05 10.2 4.55M5.8 8.95l4.4 2.5"
+      stroke="currentColor"
+      strokeWidth={1.3}
+      strokeLinecap="round"
+    />
+  </svg>
+)

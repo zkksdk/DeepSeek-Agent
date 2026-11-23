@@ -1,4 +1,6 @@
 .sider {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -8,6 +10,34 @@
   padding: 6px 12px 0;
   border-right: 1px solid var(--dsw-alias-border-l1);
   background-color: var(--dsw-specific-sidebar-fill);
+  transition: background-color 0.3s var(--ds-ease-in-out);
+}
+
+/* 液态玻璃：backdrop-filter 由 JS 写入，白度走 --lg-tint（0.11） */
+.sider[data-glass] {
+  background-color: rgba(255, 255, 255, var(--lg-tint, 0.11));
+  border-right-color: rgba(255, 255, 255, 0.58);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    8px 0 32px rgba(16, 24, 40, 0.06);
+}
+
+.sider[data-glass='blur'] {
+  background-color: rgba(250, 251, 253, 0.82);
+}
+
+body[data-ds-dark-theme] .sider[data-glass] {
+  background-color: rgba(255, 255, 255, var(--lg-tint, 0.11));
+  border-right-color: rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    8px 0 32px rgba(0, 0, 0, 0.34);
+}
+
+body[data-ds-dark-theme] .sider[data-glass='blur'] {
+  background-color: rgba(24, 26, 31, 0.86);
 }
 
 .top {
@@ -79,12 +109,43 @@
   margin-right: 6px;
 }
 
+/* 新对话按钮也是一片薄玻璃：半透明白 + 顶部高光，压在侧边栏上 */
+.sider[data-glass] .newChat {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.04),
+    0 2px 6px rgba(16, 24, 40, 0.07);
+}
+
+.sider[data-glass] .newChat:hover {
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.03),
+    0 6px 16px rgba(16, 24, 40, 0.1);
+}
+
+body[data-ds-dark-theme] .sider[data-glass] .newChat {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 2px 6px rgba(0, 0, 0, 0.28);
+}
+
+body[data-ds-dark-theme] .sider[data-glass] .newChat:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 .listWrap {
   position: relative;
   flex: 1;
   min-height: 0;
   margin-top: 24px;
 }
+
 
 .list {
   height: 100%;
@@ -117,10 +178,33 @@
   user-select: none;
 }
 
+/* 会话列表滚动时，分组标题压在内容上方：半透明 + 自带一点模糊 */
+.sider[data-glass] .sectionHeader {
+  background-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+}
+
+body[data-ds-dark-theme] .sider[data-glass] .sectionHeader {
+  background-color: rgba(20, 22, 26, 0.55);
+}
+
 .bottom {
   display: flex;
+  flex-direction: column;
   flex-shrink: 0;
-  height: 64px;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.sider[data-glass] .bottom {
+  border-top-color: rgba(255, 255, 255, 0.55);
+}
+
+body[data-ds-dark-theme] .sider[data-glass] .bottom {
+  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 .settings {
@@ -128,7 +212,6 @@
   align-items: center;
   box-sizing: border-box;
   width: 100%;
-  margin-block: auto;
   padding: 6px 2px 6px 6px;
   border: none;
   border-radius: 12px;
@@ -246,32 +329,38 @@
   }
 }
 
-.workspace {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 8px;
+
+.liveDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-dimmed);
+  transition: background 0.3s, box-shadow 0.3s;
 }
 
-.workspaceSelect {
-  flex: 1;
-  min-width: 0;
+.liveDot[data-live='true'] {
+  background: var(--dsw-static-green-500);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+  animation: livePulse 2.4s ease-in-out infinite;
 }
 
-.workspaceAdd {
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 16px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
+@keyframes livePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.04);
+  }
 }
 
-.workspaceAdd:hover {
-  border-color: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-brand-primary);
+/* ---------- 窄桌面 / 平板：侧栏收窄，把宽度让给正文 ---------- */
+@media (min-width: 768px) and (max-width: 1180px) {
+  .sider {
+    width: 228px;
+    padding: 6px 8px 0;
+  }
 }

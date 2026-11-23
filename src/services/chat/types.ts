@@ -8,6 +8,11 @@ import type {
   StopReason,
   TextCitation,
 } from '../api/types.js'
+import type {
+  ArtifactMeta,
+  ToolCallStatus,
+  ToolSource,
+} from '../agent/types.js'
 
 /**
  * 消息附件。id 是本地标识（IndexedDB files 表的主键，原件按它存储，所有引用同一 id 的消息共用一份），
@@ -62,12 +67,62 @@ export type TextPart = {
   citations?: TextCitation[]
   /** 服务端提示文案，仅用于展示，不作为模型回答参与上下文或续写。 */
   isTemplate?: boolean
-  /** 客户端工具过程的展示文本：渲染给用户看，但不回传给模型 */
-  displayOnly?: boolean
 }
 
 /** 服务端工具调用与结果块按协议原样保存；历史请求只回传 read_link 调用与结果 */
-export type ReplyBlock = ThinkingPart | TextPart | ServerToolBlock
+export type ReplyBlock =
+  | ThinkingPart
+  | TextPart
+  | ServerToolBlock
+  | ToolCallPart
+  | ToolResultPart
+
+/** 客户端工具调用：参数以流式 JSON 分片累积，执行状态就地更新 */
+export type ToolCallPart = {
+  type: 'tool_use'
+  id: string
+  name: string
+  /** 流式参数原文；流结束后解析为 input */
+  inputJson: string
+  input: unknown
+  status: ToolCallStatus
+  source: ToolSource
+  startedAt: number
+  endedAt?: number
+  /** 用户审批结果 */
+  decision?: 'allow' | 'deny'
+  /** 执行阶段反馈（如桌面端命令输出片段） */
+  progress?: string
+  /** 工具展示名与风险，历史回放时不依赖注册表 */
+  label?: string
+  risk?: 'safe' | 'write' | 'exec' | 'network'
+  /** 已转入后台：前台不再等它，结果在任务面板里 */
+  detached?: boolean
+  /** 对应的后台任务 id，界面据此提供「后台运行」与状态跳转 */
+  taskId?: string
+}
+
+/** 工具结果：同时用于回传模型与界面展示 */
+export type ToolResultPart = {
+  type: 'tool_result'
+  tool_use_id: string
+  content: string
+  isError?: boolean
+  artifacts?: ArtifactMeta[]
+  durationMs?: number
+  /** 工具自带的展示用元数据（改动行数、预览文件、任务 id 等），不进入模型上下文 */
+  meta?: Record<string, unknown>
+  /** 工具产出的图片附件，回传给模型时转成 image 内容块 */
+  images?: ToolImage[]
+}
+
+/** 工具产生的内联图片：base64 回传，界面可直接渲染 */
+export type ToolImage = {
+  mediaType: string
+  /** 不带 data: 前缀的 base64 */
+  data: string
+  name?: string
+}
 
 /**
  * pending：已发出请求，还没收到事件；streaming：正在接收；
@@ -80,7 +135,8 @@ export type AssistantMessage = MessageBranch & {
   role: 'assistant'
   createdAt: number
   /** 未记录模型时为 null，续写使用当前默认模型。 */
-  model: ChatModel | null
+  /** 远端模型 id 以字符串保存，历史记录同样兼容 */
+  model: ChatModel | string | null
   /** 请求时是否开启深度思考 */
   thinking?: boolean
   /** 请求时是否声明 deepseek_web_search；关闭时仍声明 deepseek_read_url */
@@ -92,10 +148,6 @@ export type AssistantMessage = MessageBranch & {
   status: ReplyStatus
   /** 可识别的内容块按接收顺序排列；续写产生的块追加在已有块之后 */
   blocks: ReplyBlock[]
-  /** 客户端工具调用记录（供执行与回传，不直接作为渲染内容块） */
-  toolCalls?: { id: string; name: string; input: unknown; raw?: string; index?: number }[]
-  /** 智能体轨迹：本轮工具调用记录，供右侧轨迹面板展示 */
-  trace?: TraceStep[]
   stopReason?: StopReason
   stopDetails?: StopDetails
   /** 最近一次请求的用量，续写后更新 */
@@ -113,29 +165,11 @@ export type AssistantMessage = MessageBranch & {
 
 export type Message = UserMessage | AssistantMessage
 
-/** 智能体轨迹：一次工具调用的结构化记录 */
-export type TraceStep = {
-  id: string
-  kind: 'tool'
-  name: string
-  /** 参数摘要（JSON 字符串，已截断） */
-  input: string
-  /** 结果摘要（已截断） */
-  output: string
-  isError: boolean
-  /** 耗时（毫秒） */
-  ms: number
-  /** 发生时间戳 */
-  at: number
-}
-
 export type Session = {
   id: string
   title: string
   createdAt: number
   updatedAt: number
-  /** 所属工作区；undefined 视为默认工作区 */
-  workspaceId?: string
   /** 包含所有分支的消息，按创建顺序存储。 */
   messages: Message[]
   /** undefined 表示线性消息列表；null 表示空会话。 */
@@ -143,10 +177,7 @@ export type Session = {
 }
 
 /** 会话列表元数据；消息只在打开会话时加载。 */
-export type SessionSummary = Pick<
-  Session,
-  'id' | 'title' | 'createdAt' | 'updatedAt' | 'workspaceId'
->
+export type SessionSummary = Pick<Session, 'id' | 'title' | 'createdAt' | 'updatedAt'>
 
 /** 显式提取字段，避免将完整会话的消息带进列表。 */
 export const toSessionSummary = (session: SessionSummary): SessionSummary => ({
@@ -154,5 +185,4 @@ export const toSessionSummary = (session: SessionSummary): SessionSummary => ({
   title: session.title,
   createdAt: session.createdAt,
   updatedAt: session.updatedAt,
-  workspaceId: session.workspaceId,
 })

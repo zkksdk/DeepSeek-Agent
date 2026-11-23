@@ -60,12 +60,33 @@ const syncTheme = () => {
   }
 }
 
+/**
+ * 视觉风格写到 data-look 上，全部样式由 look.css 里的变量切换。
+ * calm 是默认值，aurora 保留原来的极光 + 彩色渐变。
+ */
+let appliedLook: string | null = null
+
+const syncLook = () => {
+  const look = useSettings.getState().look
+  if (look === appliedLook) {
+    return
+  }
+  appliedLook = look
+  document.body.dataset.look = look
+  // 底色会变，浏览器栏的 theme-color 要跟着重算
+  syncPageBackground()
+}
+
 /** 首屏渲染前同步应用一次，之后随主题设置与系统深浅色变化更新 */
 export const setupTheme = () => {
   syncTheme()
+  syncLook()
   if (document.readyState !== 'complete') {
     window.addEventListener('load', syncPageBackground, { once: true })
   }
   query.addEventListener('change', syncTheme)
-  useSettings.subscribe(syncTheme)
+  useSettings.subscribe(() => {
+    syncTheme()
+    syncLook()
+  })
 }

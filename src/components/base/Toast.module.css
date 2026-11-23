@@ -59,3 +59,9 @@
     transform: translateY(-8px);
   }
 }
+
+/* 提示条是深色薄玻璃：保留深色底，只让它半透 */
+body .toast[data-glass] {
+  background-color: color-mix(in srgb, var(--dsw-alias-toast-bg) 84%, transparent);
+  --lg-elevation: 0 4px 16px rgba(0, 0, 0, 0.16);
+}

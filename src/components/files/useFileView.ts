@@ -16,7 +16,10 @@ const createViewUrl = (original: Blob, type: string) => {
   })
 }
 
-/** 草稿传 File，已发送的附件传 IndexedDB 原件 ID。 */
+/**
+ * 附件的展示地址与打开方式：草稿传 File，已发送的附件传 IndexedDB 原件 ID。
+ * 类型只按文件名后缀判定，避免被扩展名与内容不一致的文件欺骗。
+ */
 export const useFileView = (source: File | string, name: string) => {
   const type = getFileViewType(name)
   const [state, setState] = useState<{ source: File | string; type: string; url: string | null }>()

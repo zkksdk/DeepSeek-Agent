@@ -1,0 +1,39 @@
+.root {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  overflow: hidden;
+  /* 把模糊层的合成范围锁在自己身上，避免每次滚动都牵连整页重绘 */
+  contain: paint;
+  pointer-events: none;
+}
+
+.root[data-direction='top'] {
+  top: 0;
+}
+
+.root[data-direction='bottom'] {
+  bottom: 0;
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* 压在模糊层上的底色，让边缘的文字始终有对比度 */
+.tint {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: var(--dsw-alias-bg-base);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root {
+    /* 模糊是静态的，这里只关掉可能存在的滤镜动画 */
+    transition: none;
+  }
+}

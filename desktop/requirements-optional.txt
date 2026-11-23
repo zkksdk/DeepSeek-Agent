@@ -1,0 +1,15 @@
+# 移植工具的可选依赖：缺哪个就只禁用对应工具，其余照常可用。
+# 安装：pip install -r requirements-optional.txt
+
+# 图片处理（desk_image）
+Pillow>=10.0
+# PDF 读取（desk_pdf）
+pypdf>=4.0
+# Office 读写（desk_office）
+python-docx>=1.1
+openpyxl>=3.1
+python-pptx>=0.6.23
+# 二维码（desk_qr）
+qrcode>=7.4
+# Windows 上的时区数据（desk_time timezone）
+tzdata>=2024.1

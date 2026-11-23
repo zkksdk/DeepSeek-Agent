@@ -1,0 +1,98 @@
+/* 分享弹窗：左边一块白底二维码，右边说明与操作 */
+
+.body {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* 二维码永远是深色码 + 白底，不跟随主题反色，否则扫不出来 */
+.qrCard {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 208px;
+  height: 208px;
+  padding: 10px;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 8px 24px -16px rgba(15, 23, 42, 0.5);
+}
+
+.qr {
+  width: 100%;
+  height: 100%;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.title {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sub {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.warn {
+  margin: 0 0 8px;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fallback {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 画布只用于导出 PNG，不参与布局 */
+.canvas {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  .body {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .qrCard {
+    width: 168px;
+    height: 168px;
+  }
+
+  .meta {
+    align-items: center;
+    text-align: center;
+  }
+}

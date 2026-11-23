@@ -14,6 +14,10 @@
   }
 }
 
+/*
+ * 普通毛玻璃表面：一层半透明底色 + backdrop-filter 模糊，不做折射贴图。
+ * 设置、Agent 能力、工作区三个页面都复用这里，打开和滚动时只有一次滤镜开销。
+ */
 .content {
   display: flex;
   flex-direction: column;
@@ -21,16 +25,35 @@
   width: 380px;
   max-width: calc(100vw - 32px);
   padding: 22px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: 24px;
   font-size: 14px;
   line-height: 22px;
   color: var(--dsw-alias-label-primary);
-  background-color: var(--dsw-alias-bg-layer-2);
+  background-color: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(24px) saturate(1.45);
+  -webkit-backdrop-filter: blur(24px) saturate(1.45);
   box-shadow:
-    inset 0 0 0 1px var(--dsw-alias-border-inverted),
-    0 0 1px 0 rgba(0, 0, 0, 0.2),
-    0 0 4px 0 rgba(0, 0, 0, 0.02),
-    0 12px 32px 0 rgba(0, 0, 0, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 1px 0 rgba(0, 0, 0, 0.18),
+    0 24px 60px -18px rgba(16, 24, 40, 0.28);
+}
+
+body[data-ds-dark-theme] .content {
+  border-color: rgba(255, 255, 255, 0.13);
+  background-color: rgba(28, 30, 35, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 24px 60px -18px rgba(0, 0, 0, 0.6);
+}
+
+/* 不支持 backdrop-filter 时退回不透明底，保证文字对比度 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .content {
+    background-color: var(--dsw-alias-bg-layer-2);
+  }
 }
 
 .header {
@@ -65,4 +88,39 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 20px;
+}
+
+/* ---------- 移动端：弹窗变成从底部升起的整宽面板 ---------- */
+/* 用 .overlay .content 提高优先级，压过各面板自己的宽度设置 */
+
+@media not all and (min-width: 768px) {
+  .overlay {
+    align-items: flex-end;
+  }
+
+  .overlay .content {
+    width: 100%;
+    max-width: 100%;
+    max-height: 88dvh;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+    border-radius: 18px 18px 0 0;
+    animation: sheetUp 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@keyframes sheetUp {
+  from {
+    opacity: 0.6;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay .content {
+    animation: none !important;
+  }
 }

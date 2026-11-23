@@ -1,0 +1,196 @@
+/**
+ * 视觉基线：默认「中性克制」。
+ *
+ * 原来的配色是典型的 AI 产品风：紫青双色极光、点阵、光标柔光、玻璃高光渐变。
+ * 这套风格辨识度高但「AI 味」也重，而且在低配机器上很吃性能（大面积 blur + backdrop-filter）。
+ *
+ * 这里做的是减法：
+ * - 底色收敛为单一中性色，只留一层极淡的顶光；
+ * - 强调色只保留一个蓝，且只出现在可交互状态上；
+ * - 层次靠 1px 发丝线与字重，而不是投影和渐变；
+ * - 字号更小、行高更紧，读起来像工具而不是宣传页。
+ *
+ * 想回到原来的样子：设置 → 外观 → 视觉风格选「极光」。所有新规则都挂在
+ * body[data-look='calm'] 下，切回去就是原样。
+ */
+
+/* ---------- 亮色 ---------- */
+
+body[data-look='calm'] {
+  --calm-hairline: rgba(15, 23, 42, 0.09);
+  --calm-hairline-strong: rgba(15, 23, 42, 0.14);
+  --calm-ink: #14161a;
+  --calm-ink-2: #565b64;
+  --calm-ink-3: #767c86;
+  --calm-ink-4: #9aa0a9;
+  --calm-surface: #ffffff;
+  --calm-canvas: #fbfbfc;
+  --calm-raised: rgba(255, 255, 255, 0.72);
+
+  --dsw-alias-bg-base: var(--calm-canvas);
+  --dsw-alias-bg-layer-2: var(--calm-surface);
+  --dsw-alias-bg-layer-3: var(--calm-surface);
+  --dsw-alias-bg-skeleton: rgba(15, 23, 42, 0.05);
+
+  --dsw-alias-border-l1: var(--calm-hairline);
+  --dsw-alias-border-l2: var(--calm-hairline);
+  --dsw-alias-border-l2-darkmode-thin: var(--calm-hairline);
+  --dsw-alias-border-l3: var(--calm-hairline-strong);
+
+  --dsw-alias-label-primary: var(--calm-ink);
+  --dsw-alias-label-secondary: var(--calm-ink-2);
+  --dsw-alias-label-tertiary: var(--calm-ink-3);
+  --dsw-alias-label-caption: var(--calm-ink-4);
+  --dsw-alias-label-dimmed: rgba(15, 23, 42, 0.16);
+
+  /* 强调色：一个蓝，且偏冷偏深，不做霓虹 */
+  --dsw-alias-brand-primary: #2f5be0;
+  --dsw-alias-brand-text: #2a52cf;
+  --dsw-alias-button-primary-fill: #2a52cf;
+  --dsw-alias-button-primary-hover: #2447b4;
+
+  /* 选中态不再用浅蓝底，改成中性填充 + 左侧指示条 */
+  --dsw-alias-button-ghost-active-fill: rgba(15, 23, 42, 0.06);
+  --dsw-alias-button-ghost-active-border: transparent;
+  --dsw-alias-button-ghost-active-hover: rgba(15, 23, 42, 0.09);
+
+  --dsw-alias-interactive-bg-hover: rgba(15, 23, 42, 0.05);
+  --dsw-alias-interactive-bg-active: rgba(15, 23, 42, 0.09);
+  --dsw-alias-interactive-bg-hover-accent: rgba(15, 23, 42, 0.12);
+
+  --dsw-specific-bubble: rgba(15, 23, 42, 0.045);
+  --dsw-specific-input-major: var(--calm-surface);
+  --dsw-specific-menu: var(--calm-surface);
+  --dsw-specific-selector: rgba(15, 23, 42, 0.05);
+  --dsw-specific-sidebar-fill: rgba(250, 250, 251, 0.62);
+  --dsw-specific-sidebar-nav-item-active-accent: rgba(15, 23, 42, 0.06);
+  --dsw-specific-sidebar-nav-item-hover: rgba(15, 23, 42, 0.045);
+
+  --dsw-alias-markdown-code-block: #f4f5f7;
+  --dsw-alias-markdown-code-block-banner: #eeeef1;
+  --dsw-alias-markdown-inline-code: rgba(15, 23, 42, 0.055);
+  --dsw-alias-markdown-citation: rgba(15, 23, 42, 0.05);
+  --dsw-alias-markdown-tag: rgba(15, 23, 42, 0.05);
+
+  --dsw-shadow-lv3:
+    0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 28px -12px rgba(15, 23, 42, 0.18);
+}
+
+/* ---------- 暗色 ---------- */
+
+body[data-look='calm'][data-ds-dark-theme] {
+  --calm-hairline: rgba(255, 255, 255, 0.085);
+  --calm-hairline-strong: rgba(255, 255, 255, 0.14);
+  --calm-ink: #eceef2;
+  --calm-ink-2: #b0b5bf;
+  --calm-ink-3: #8b909a;
+  --calm-ink-4: #6b707a;
+  --calm-surface: #1a1c20;
+  --calm-canvas: #131416;
+  --calm-raised: rgba(26, 28, 32, 0.62);
+
+  --dsw-alias-bg-base: var(--calm-canvas);
+  --dsw-alias-bg-layer-2: var(--calm-surface);
+  --dsw-alias-bg-layer-3: #202329;
+  --dsw-alias-bg-skeleton: rgba(255, 255, 255, 0.06);
+
+  --dsw-alias-border-l1: var(--calm-hairline);
+  --dsw-alias-border-l2: var(--calm-hairline);
+  --dsw-alias-border-l2-darkmode-thin: var(--calm-hairline);
+  --dsw-alias-border-l3: var(--calm-hairline-strong);
+
+  --dsw-alias-label-primary: var(--calm-ink);
+  --dsw-alias-label-secondary: var(--calm-ink-2);
+  --dsw-alias-label-tertiary: var(--calm-ink-3);
+  --dsw-alias-label-caption: var(--calm-ink-4);
+  --dsw-alias-label-dimmed: rgba(255, 255, 255, 0.18);
+
+  --dsw-alias-brand-primary: #6d94ff;
+  --dsw-alias-brand-text: #86a6ff;
+  --dsw-alias-button-primary-fill: #3f6be0;
+  --dsw-alias-button-primary-hover: #4a76ee;
+
+  --dsw-alias-button-ghost-active-fill: rgba(255, 255, 255, 0.08);
+  --dsw-alias-button-ghost-active-border: transparent;
+  --dsw-alias-button-ghost-active-hover: rgba(255, 255, 255, 0.12);
+
+  --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.06);
+  --dsw-alias-interactive-bg-active: rgba(255, 255, 255, 0.1);
+  --dsw-alias-interactive-bg-hover-accent: rgba(255, 255, 255, 0.16);
+
+  --dsw-specific-bubble: rgba(255, 255, 255, 0.055);
+  --dsw-specific-input-major: var(--calm-surface);
+  --dsw-specific-menu: var(--calm-surface);
+  --dsw-specific-selector: rgba(255, 255, 255, 0.07);
+  --dsw-specific-sidebar-fill: rgba(19, 20, 22, 0.6);
+  --dsw-specific-sidebar-nav-item-active-accent: rgba(255, 255, 255, 0.07);
+  --dsw-specific-sidebar-nav-item-hover: rgba(255, 255, 255, 0.05);
+
+  --dsw-alias-markdown-code-block: #191b1f;
+  --dsw-alias-markdown-code-block-banner: #202329;
+  --dsw-alias-markdown-inline-code: rgba(255, 255, 255, 0.07);
+  --dsw-alias-markdown-citation: rgba(255, 255, 255, 0.06);
+  --dsw-alias-markdown-tag: rgba(255, 255, 255, 0.06);
+
+  --dsw-shadow-lv3:
+    0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 32px -16px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- 版面：更紧的正文与更窄的行宽 ---------- */
+
+body[data-look='calm'] {
+  --message-list-max-width: 752px;
+  --message-list-padding-horizontal: 40px;
+
+  --dsw-font-markdown-h1: 600 22px/32px var(--dsw-font-family);
+  --dsw-font-markdown-h2: 600 19px/28px var(--dsw-font-family);
+  --dsw-font-markdown-h3: 600 17px/26px var(--dsw-font-family);
+  --dsw-font-markdown-h4: 600 15px/24px var(--dsw-font-family);
+  --dsw-font-markdown-base: 15px/26px var(--dsw-font-family);
+  --dsw-font-markdown-base-strong: 600 15px/26px var(--dsw-font-family);
+  --dsw-font-markdown-table: 14px/22px var(--dsw-font-family);
+  --dsw-font-markdown-table-head: 500 14px/22px var(--dsw-font-family);
+  --dsw-font-markdown-small: 13.5px/22px var(--dsw-font-family);
+  --dsw-font-markdown-small-strong: 600 13.5px/22px var(--dsw-font-family);
+  --dsw-font-markdown-code: 13.5px/22px var(--ds-font-family-code);
+  --dsw-font-markdown-code-block: 12.5px/21px var(--ds-font-family-code);
+}
+
+@media (max-width: 1023px) {
+  body[data-look='calm'] {
+    --message-list-max-width: 680px;
+    --message-list-padding-horizontal: 28px;
+  }
+}
+
+/* 整页只留一层顶光，不再有会漂的光斑 */
+body[data-look='calm'] #root {
+  background:
+    radial-gradient(120% 70% at 50% -30%, rgba(47, 91, 224, 0.045), transparent 62%),
+    var(--dsw-alias-bg-base);
+}
+
+body[data-look='calm'][data-ds-dark-theme] #root {
+  background:
+    radial-gradient(120% 70% at 50% -30%, rgba(109, 148, 255, 0.07), transparent 62%),
+    var(--dsw-alias-bg-base);
+}
+
+/* 滚动条也跟着收敛：只有悬停时才明显 */
+body[data-look='calm'] * {
+  scrollbar-width: thin;
+}
+
+/* 手机：正文两侧留白再收一点，长句不至于只剩几个字一行 */
+@media (max-width: 480px) {
+  body[data-look='calm'] {
+    --message-list-padding-horizontal: 18px;
+  }
+}
+
+/* 手机：正文两侧留白再收一点，长句不至于只剩几个字一行 */
+@media (max-width: 480px) {
+  body[data-look='calm'] {
+    --message-list-padding-horizontal: 18px;
+  }
+}
