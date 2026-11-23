@@ -96,6 +96,7 @@ scripts/sync-harmony-assets.mjs         拷 dist 并生成 _assets.json
 | Monaco diff | 加载中提示正常显示（2.7 MB chunk 经拦截器拿到） |
 | 工具调用 | 通过，问北京天气，真实调用天气工具拉到 Open-Meteo 数据并渲染成表格 |
 | 多轮用量统计 | 通过，「输入 22.1k tok / 输出 254 tok / 首字 6.34s / 缓存 97.9%」 |
+| 并行 / 后台工具 | 通过，时间 → 天气（自动转后台）→ 读任务结果三步链，卡片带「已转后台」状态与 JSON 参数 |
 | 下载落盘 | 通过，blob 下载 → 系统保存面板 → 文件进 `/storage/media/100/local/files/Docs` |
 | 返回键 | 通过，首页按返回回桌面，不再黑屏 |
 | 冷启动 | 首启 3.43 s、有缓存 2.6 s（`onCreate` → `page end`） |
