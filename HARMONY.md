@@ -79,12 +79,41 @@ scripts/sync-harmony-assets.mjs         拷 dist 并生成 _assets.json
 | 文件下载 / 导出 ZIP | **未接** `a[download]` 在 ArkWeb 里不会触发保存，需要补原生桥 |
 | API Key 存储 | 仍是 localStorage，没换 `@ohos.security.asset`（见 `src/services/platform/secureStore.ts`） |
 
+## 实测记录
+
+在 DevEco 6.1.1 自带模拟器（Pura 90，HarmonyOS 6.1.0.117，API 24）上跑过一轮：
+
+| 项 | 结果 |
+| --- | --- |
+| 安装未签名 HAP | 通过（`hdc install`，系统没拦签名） |
+| 首屏渲染 | 通过，HTML/CSS/JS 全部经拦截器返回 |
+| 资源落地 | 通过，158 个文件 / 5.2 MB 写进 `haps/entry/files/www`，版本签名 `158-8d87d9bc` |
+| 定位 + 麦克风权限 | 两个弹窗都正常，授权结果 `[0,0,0]` |
+| 主题切换 + 重启保持 | 通过，localStorage 持久化正常 |
+| `GET /models` | 通过，「获取列表」拉到 `deepseek-flash`，CORS 从 `https://app.local` 放行 |
+| SSE 对话 | 通过，发一句英文正常收到回复并自动生成标题 |
+| 会话持久化 | 通过，冷启动后侧边栏里会话还在（IndexedDB 可用） |
+| 「轨迹」面板入口 | 存在，说明那套 agent 改造在壳里工作 |
+
+## 实测踩到的坑
+
+这几条都是真跑出来才发现的，写在这里省得重踩：
+
+1. **MIME 不能带 charset。** `setResponseMimeType('text/html; charset=utf-8')` 会被当成未知类型，
+   整页 HTML 直接以纯文本显示。裸类型给 mimeType，带参数的完整值放 `setResponseHeader`。
+2. **同步拷资源会卡死生命周期。** 同步写 158 个文件 / 5.2 MB 触发 `LIFECYCLE_TIMEOUT`
+   （faultlogger 里就写着这个 Reason）。必须异步，首帧先出加载态。
+3. **`accessBackward()` 在初始导航下也可能为 true。** 照它退会退成空白页，整屏黑。
+   要同时判断当前 URL 仍在 `APP_ORIGIN` 下。
+4. **模拟器上中文输入法会让整屏卡黑**（英文直接注入没问题）。这是模拟器渲染的问题，
+   不是应用逻辑，重启应用即可恢复。
+
 ## 已知限制
 
-- **没有真机或模拟器验证过运行时。** 构建通过只证明 ArkTS 编译和打包没问题，
-  拦截器、沙箱写入、权限的实际行为都还没在设备上跑过。
-- 未签名，装不上真机。
-- 导出、下载类功能需要补原生桥（`@kit.CoreFileKit` + 系统分享）。
+- 未签名。模拟器能装，真机不行，需要在 DevEco 里配 `signingConfigs`。
+- 真机没测过，只在模拟器上验证。
+- 导出、下载类功能还没接原生桥（`@kit.CoreFileKit` + 系统分享），
+  `a[download]` 在 ArkWeb 里不会触发保存。
 - 工程路径必须是 ASCII。
 
 ## 原生桥怎么接

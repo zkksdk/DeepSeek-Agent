@@ -5,6 +5,10 @@
  * 而 rawfile 只能按已知名字同步读、不能列目录。所以启动时把 rawfile 里的
  * www 整份落到应用沙箱，之后拦截回调直接读文件系统，还能自己挂一层内存缓存。
  *
+ * 拷贝必须异步：实测同步拷 158 个文件 / 5.2 MB 会把生命周期卡住，系统判
+ * LIFECYCLE_TIMEOUT（faultlogger 里就是这个 Reason）。改成 Promise 后首帧
+ * 立刻出来，页面等拷贝完成再开始加载。
+ *
  * 版本用资源清单的签名（条目数 + 内容哈希），清单不变就不重复拷贝。
  */
 import { common } from '@kit.AbilityKit'
@@ -19,20 +23,20 @@ export class WebAssets {
   private static cache: Map<string, ArrayBuffer> = new Map<string, ArrayBuffer>()
 
   /** 装载（或跳过）web 产物，返回沙箱内 www 目录的绝对路径 */
-  static install(context: common.UIAbilityContext): string {
+  static async install(context: common.UIAbilityContext): Promise<string> {
     if (WebAssets.rootDir.length > 0) {
       return WebAssets.rootDir
     }
     const base = context.filesDir
     const root = base + '/www'
     const raw = context.resourceManager.getRawFileContentSync(MANIFEST)
-    const text = WebAssets.decode(raw)
-    const list = JSON.parse(text) as string[]
+    const list = JSON.parse(WebAssets.decode(raw)) as string[]
     const version = WebAssets.signature(list)
     const versionPath = base + '/' + VERSION_FILE
-    if (WebAssets.readText(versionPath) !== version) {
-      WebAssets.materialize(context, root, list)
-      WebAssets.writeText(versionPath, version)
+    const installed = await WebAssets.readText(versionPath)
+    if (installed !== version) {
+      await WebAssets.materialize(context, root, list)
+      await WebAssets.writeText(versionPath, version)
       WebAssets.cache.clear()
     }
     WebAssets.rootDir = root
@@ -140,11 +144,11 @@ export class WebAssets {
 
   // ---------- 内部 ----------
 
-  private static materialize(
+  private static async materialize(
     context: common.UIAbilityContext,
     root: string,
     list: string[]
-  ): void {
+  ): Promise<void> {
     if (!fs.accessSync(root)) {
       fs.mkdirSync(root, true)
     }
@@ -152,7 +156,7 @@ export class WebAssets {
       const bytes = context.resourceManager.getRawFileContentSync('www/' + rel)
       const target = root + '/' + rel
       WebAssets.ensureDir(target)
-      WebAssets.writeBytes(target, bytes)
+      await WebAssets.writeBytes(target, bytes)
     }
   }
 
@@ -167,36 +171,42 @@ export class WebAssets {
     }
   }
 
-  private static writeBytes(target: string, bytes: Uint8Array): void {
+  private static async writeBytes(target: string, bytes: Uint8Array): Promise<void> {
     const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-    const file = fs.openSync(target, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+    const file = await fs.open(
+      target,
+      fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+    )
     try {
-      fs.writeSync(file.fd, buf)
+      await fs.write(file.fd, buf)
     } finally {
-      fs.closeSync(file)
+      await fs.close(file)
     }
   }
 
-  private static writeText(target: string, text: string): void {
-    const file = fs.openSync(target, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+  private static async writeText(target: string, text: string): Promise<void> {
+    const file = await fs.open(
+      target,
+      fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+    )
     try {
-      fs.writeSync(file.fd, text)
+      await fs.write(file.fd, text)
     } finally {
-      fs.closeSync(file)
+      await fs.close(file)
     }
   }
 
-  private static readText(target: string): string {
+  private static async readText(target: string): Promise<string> {
     if (!fs.accessSync(target)) {
       return ''
     }
     const stat = fs.statSync(target)
     const buf = new ArrayBuffer(stat.size)
-    const file = fs.openSync(target, fs.OpenMode.READ_ONLY)
+    const file = await fs.open(target, fs.OpenMode.READ_ONLY)
     try {
-      fs.readSync(file.fd, buf)
+      await fs.read(file.fd, buf)
     } finally {
-      fs.closeSync(file)
+      await fs.close(file)
     }
     return WebAssets.decode(new Uint8Array(buf))
   }
