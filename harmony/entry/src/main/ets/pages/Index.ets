@@ -56,6 +56,17 @@ const OAUTH_REDIRECT: string = 'http://localhost:8080/oauth/callback'
 const OAUTH_INIT_URL: string = 'https://platform.deepseek.com/auth-api/v0/dsh/auth_init'
 const OAUTH_EXCHANGE_URL: string = 'https://platform.deepseek.com/auth-api/v0/dsh/auth_exchange'
 
+/** 把未捕获异常和 console.error 转给原生，黑屏才有据可查 */
+const ERROR_WATCH: string =
+  "(function(){" +
+  "if(window.__DS_ERR_WATCH__)return 'already';" +
+  "window.__DS_ERR_WATCH__=true;" +
+  "var send=function(m){try{window.__DS_SHELL__.log(String(m).slice(0,300))}catch(e){}};" +
+  "window.addEventListener('error',function(e){send('ERROR '+(e.message||'')+' @ '+(e.filename||'')+':'+(e.lineno||0))});" +
+  "window.addEventListener('unhandledrejection',function(e){send('REJECT '+(e.reason&&e.reason.message?e.reason.message:String(e.reason)).slice(0,200))});" +
+  "var ce=console.error;console.error=function(){try{send('console.error '+Array.prototype.join.call(arguments,' ').slice(0,250))}catch(e){};return ce.apply(console,arguments)};" +
+  "return 'watching'})()"
+
 const HASH_WATCH: string =
   "(function(){" +
   "if(window.__DS_HASH_WATCH__)return 'already';" +
@@ -152,6 +163,11 @@ class ShellBridge {
 
   constructor(context: common.UIAbilityContext) {
     this.context = context
+  }
+
+  /** 页面把 console/error 转给原生，方便在 hilog 里看 */
+  log(message: string): void {
+    hilog.info(DOMAIN, TAG, 'web: %{public}s', message.slice(0, 400))
   }
 
   /** 设置页点「账号登录」时调用 */
@@ -593,7 +609,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login'],
+            methodList: ['notify', 'onHash', 'login', 'log'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
@@ -613,6 +629,11 @@ struct Index {
               .runJavaScript(AUTH_TOKEN_PATCH)
               .catch((error: Error) => {
                 hilog.warn(DOMAIN, TAG, 'auth patch failed: %{public}s', error.message)
+              })
+            this.controller
+              .runJavaScript(ERROR_WATCH)
+              .catch((error: Error) => {
+                hilog.warn(DOMAIN, TAG, 'error watch failed: %{public}s', error.message)
               })
             this.controller
               .runJavaScript(HASH_WATCH)
