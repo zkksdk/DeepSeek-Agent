@@ -191,6 +191,11 @@ handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-tes
 | Web Speech (`speechSynthesis`) | 对象在，但 **`getVoices()` 返回 0** | 看起来像"朗读废了"，其实**不影响**——见下面的说明 |
 | `showSaveFilePicker` / `showDirectoryPicker` | 存在但**退化** | 见下 |
 | `<input type="file">` | true | 触发系统「选择上传」：图库（最多 50 张）/ 拍照或录像 / 文件 |
+| `visualViewport` / `ResizeObserver` / `IntersectionObserver` | true | 软键盘弹出时输入框能被顶上去，靠的就是这套 |
+| `Intl` | true | 时间/数字本地化正常 |
+| Web Locks | true | 并发写入有锁可用 |
+| `navigator.vibrate` | true | 接口在（模拟器没有振动器，真机待验） |
+| 存储配额 | **3.67 GB**（已用 4 KB） | IndexedDB 存会话和附件，基本不受限 |
 
 两条有实际后果：
 
