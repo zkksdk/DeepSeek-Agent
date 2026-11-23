@@ -118,22 +118,48 @@ DeepSeek-Agent 有三块能力依赖「桌面浏览器 / 本机」，在手机�
   内置演示仓库那套是纯前端的，能用。
 - **Monaco diff**：能加载（2.7 MB chunk 正常拿到），但手机屏幕太小，体验一般。
 
+## 下载与导出
+
+Web 端保存文件的写法是 `URL.createObjectURL(blob)` + `a[download].click()`，
+ArkWeb 不会像桌面浏览器那样自己落盘，得接 `setDownloadDelegate` 才有人管。
+
+实测 **blob: URL 确实会被 `onBeforeDownload` 接住**，链路是：
+
+1. `onBeforeDownload` → `item.start(filesDir/downloads/<name>)` 先落沙箱
+2. `onDownloadFinish` → `picker.DocumentViewPicker.save()` 弹系统保存面板
+3. 用户选位置 → 把沙箱文件拷过去 → 删掉临时文件
+
+跑出来的日志：
+
+```text
+download before: url=blob:https://app.local/8ffac9bb-... name=shell-test.txt
+download progress: 100
+download finish: /data/storage/el2/base/haps/entry/files/downloads/shell-test.txt
+handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-test.txt
+```
+
+文件最终在 `/storage/media/100/local/files/Docs/shell-test.txt`，16 字节内容一致，
+沙箱里的临时文件已删除。同一条路径覆盖「导出所有历史对话（ZIP）」和「保存分享图（PNG）」。
+
 ## 已知限制
 
-- 未签名。模拟器能装，真机不行。
+- 未签名。模拟器能装，真机不行，需要在 DevEco 里配 `signingConfigs`。
 - 真机没测过，只在模拟器上验证。
-- 导出、下载类功能还没接原生桥（`@kit.CoreFileKit` + 系统分享），
-  `a[download]` 在 ArkWeb 里不会触发保存。
 - 输入区在窄屏（<768px）已改成单行横向滑动，四行压回一行。代价是靠右的胶囊
   （工作区、提示词）藏在滑动区里，需要横滑才看得到；要彻底解决得把它们收进菜单。
 - 工程路径必须是 ASCII。
 
-## 原生桥怎么接
+## 调试开关
 
-`Web` 组件支持 `javaScriptProxy` 注入对象给页面。建议的补法：
+`harmony/entry/src/main/ets/pages/Index.ets` 顶部有三个常量，平时都应该是空串：
 
-1. ArkTS 侧注册 `__DS_SHELL__`，暴露 `saveFile(name, base64)`、`pickDirectory()` 等
-2. `src/services/platform/download.ts` 里检测 `window.__DS_SHELL__`，有就走原生，没有走 `a[download]`
-3. 类型声明补到 `src/env.d.ts`
+| 常量 | 作用 |
+| --- | --- |
+| `DEBUG_API_KEY` | 页面加载完写进 `localStorage`，免去每次手输 Key（模拟器软键盘会卡） |
+| `DEBUG_HASH` | 页面加载完跳到指定 hash，例如 `#/settings/data` 直达数据页 |
+| `DEBUG_JS` | 页面加载完执行一次任意 JS，用来联调 H5 端的下载、存储之类 |
 
-这样浏览器版行为不受影响，壳里自动升级成系统级保存。
+另外 `webview.WebviewController.setWebDebuggingAccess(true)` 那一行默认注释着，
+需要连 DevTools 时打开，配合 `hdc fport tcp:9222 tcp:9222`。
+
+**发布前务必确认这三个常量都是空串、调试开关已注释**，否则等于在正式包里留了后门。

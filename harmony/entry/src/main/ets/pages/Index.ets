@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit'
 import { webview } from '@kit.ArkWeb'
+import { fileIo as fs, picker } from '@kit.CoreFileKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import { WebAssets } from '../web/WebAssets'
 
@@ -31,11 +32,26 @@ const API_KEY_STORAGE: string = 'chat-demo:api-key'
  */
 const DEBUG_API_KEY: string = ''
 
+/** 测试用：非空时页面加载完跳到该 hash（例如 '#/settings/data'）。验证完置空。 */
+const DEBUG_HASH: string = ''
+
+/**
+ * 测试用：非空时页面加载完执行一次这段 JS。验证完必须置空。
+ * 联调 H5 端的下载、存储、上报之类时，比改代码重装快得多。
+ */
+const DEBUG_JS: string = ''
+
 @Entry
 @Component
 struct Index {
   private controller: webview.WebviewController = new webview.WebviewController()
   private injected: boolean = false
+  private navigated: boolean = false
+  private scriptRan: boolean = false
+  /** 下载落地目录：先存沙箱，再交给用户 */
+  private downloadDir: string = ''
+  /** 交给用户时要用 picker，picker 需要 UIAbilityContext */
+  private abilityContext: common.UIAbilityContext | undefined = undefined
   @State private assetsReady: boolean = false
   @State private failure: string = ''
 
@@ -44,6 +60,11 @@ struct Index {
     // `hdc fport tcp:9222 tcp:9222`；正式包必须关掉。
     // webview.WebviewController.setWebDebuggingAccess(true)
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
+    this.abilityContext = context
+    this.downloadDir = context.filesDir + '/downloads'
+    if (!fs.accessSync(this.downloadDir)) {
+      fs.mkdirSync(this.downloadDir, true)
+    }
     // 异步装载：同步拷 5.2 MB 会卡死生命周期，见 WebAssets 顶部注释
     WebAssets.install(context)
       .then(() => {
@@ -53,6 +74,92 @@ struct Index {
         this.failure = error.message
         hilog.error(DOMAIN, TAG, 'web assets install failed: %{public}s', error.message)
       })
+  }
+
+  /**
+   * 下载代理。
+   *
+   * Web 端导出历史对话、保存分享图都是 URL.createObjectURL(blob) + a.click()，
+   * ArkWeb 默认不会像桌面浏览器那样落盘，必须自己接 downloadDelegate。
+   * 这里统一落到应用沙箱 downloads/，再由 onDownloadFinish 交给用户。
+   */
+  private setupDownload(): void {
+    const delegate = new webview.WebDownloadDelegate()
+    delegate.onBeforeDownload((item: webview.WebDownloadItem) => {
+      const name = item.getSuggestedFileName().length > 0
+        ? item.getSuggestedFileName()
+        : 'download-' + Date.now().toString()
+      const target = this.downloadDir + '/' + name
+      hilog.info(
+        DOMAIN,
+        TAG,
+        'download before: url=%{public}s name=%{public}s',
+        item.getUrl(),
+        name
+      )
+      item.start(target)
+    })
+    delegate.onDownloadUpdated((item: webview.WebDownloadItem) => {
+      hilog.info(DOMAIN, TAG, 'download progress: %{public}d', item.getPercentComplete())
+    })
+    delegate.onDownloadFinish((item: webview.WebDownloadItem) => {
+      const path = item.getFullPath()
+      hilog.info(DOMAIN, TAG, 'download finish: %{public}s', path)
+      this.handOverDownload(path, item.getSuggestedFileName())
+    })
+    delegate.onDownloadFailed((item: webview.WebDownloadItem) => {
+      hilog.error(
+        DOMAIN,
+        TAG,
+        'download failed: url=%{public}s state=%{public}d',
+        item.getUrl(),
+        item.getState()
+      )
+    })
+    this.controller.setDownloadDelegate(delegate)
+  }
+
+  /**
+   * 下载完成后把文件交到用户手上。
+   *
+   * 直接落在应用沙箱里用户是拿不到的（微信、文件管理都看不到），所以弹系统
+   * 保存面板让用户挑位置，再把沙箱里的临时文件拷过去、删掉。
+   */
+  private async handOverDownload(path: string, suggested: string): Promise<void> {
+    if (this.abilityContext === undefined) {
+      hilog.error(DOMAIN, TAG, 'handover skipped: no context')
+      return
+    }
+    const name = suggested.length > 0 ? suggested : 'download'
+    try {
+      const documentPicker = new picker.DocumentViewPicker(this.abilityContext)
+      const options = new picker.DocumentSaveOptions()
+      options.newFileNames = [name]
+      const uris = await documentPicker.save(options)
+      if (uris.length === 0) {
+        hilog.info(DOMAIN, TAG, 'handover cancelled by user')
+        return
+      }
+      const stat = fs.statSync(path)
+      const buf = new ArrayBuffer(stat.size)
+      const src = await fs.open(path, fs.OpenMode.READ_ONLY)
+      try {
+        await fs.read(src.fd, buf)
+      } finally {
+        await fs.close(src)
+      }
+      const dst = await fs.open(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC)
+      try {
+        await fs.write(dst.fd, buf)
+      } finally {
+        await fs.close(dst)
+      }
+      fs.unlinkSync(path)
+      hilog.info(DOMAIN, TAG, 'handover done: %{public}s -> %{public}s', name, uris[0])
+    } catch (error) {
+      const err = error as Error
+      hilog.error(DOMAIN, TAG, 'handover failed: %{public}s', err.message)
+    }
   }
 
   /** 返回键先退 web 历史，退不动才交给系统 */
@@ -144,6 +251,10 @@ struct Index {
           .mixedMode(MixedMode.All)
           .cacheMode(CacheMode.Default)
           .darkMode(WebDarkMode.Auto)
+          .onControllerAttached(() => {
+            // 下载代理要在 controller 绑定之后才能设
+            this.setupDownload()
+          })
           .onInterceptRequest((event) => {
             if (!event) {
               return null
@@ -165,6 +276,23 @@ struct Index {
                 .then(() => this.controller.refresh())
                 .catch((error: Error) => {
                   hilog.error(DOMAIN, TAG, 'inject failed: %{public}s', error.message)
+                })
+              return
+            }
+            if (DEBUG_HASH.length > 0 && !this.navigated) {
+              this.navigated = true
+              this.controller.loadUrl(HOME_URL + DEBUG_HASH)
+              return
+            }
+            if (DEBUG_JS.length > 0 && !this.scriptRan) {
+              this.scriptRan = true
+              this.controller
+                .runJavaScript(DEBUG_JS)
+                .then((result) => {
+                  hilog.info(DOMAIN, TAG, 'debug js result: %{public}s', JSON.stringify(result))
+                })
+                .catch((error: Error) => {
+                  hilog.error(DOMAIN, TAG, 'debug js failed: %{public}s', error.message)
                 })
             }
           })
