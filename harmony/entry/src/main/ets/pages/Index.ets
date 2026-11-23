@@ -1,4 +1,4 @@
-import { common } from '@kit.AbilityKit'
+import { common, ConfigurationConstant } from '@kit.AbilityKit'
 import { webview } from '@kit.ArkWeb'
 import { fileIo as fs, picker } from '@kit.CoreFileKit'
 import { notificationManager } from '@kit.NotificationKit'
@@ -41,6 +41,12 @@ const DEBUG_HASH: string = ''
  * 联调 H5 端的下载、存储、上报之类时，比改代码重装快得多。
  */
 const DEBUG_JS: string = ''
+
+/**
+ * 测试用：非空时在启动时强制切颜色模式（'dark' / 'light'），用来验证
+ * Web 的 prefers-color-scheme 是否跟着走。验证完必须置空。
+ */
+const DEBUG_COLOR_MODE: string = ''
 
 /**
  * 注入给页面的原生能力。
@@ -107,6 +113,12 @@ struct Index {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
     this.bridge = new ShellBridge(context)
+    if (DEBUG_COLOR_MODE.length > 0) {
+      const mode = DEBUG_COLOR_MODE === 'dark'
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+        : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+      context.getApplicationContext().setColorMode(mode)
+    }
     this.downloadDir = context.filesDir + '/downloads'
     if (!fs.accessSync(this.downloadDir)) {
       fs.mkdirSync(this.downloadDir, true)

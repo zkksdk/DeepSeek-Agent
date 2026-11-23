@@ -99,6 +99,7 @@ scripts/sync-harmony-assets.mjs         拷 dist 并生成 _assets.json
 | 并行 / 后台工具 | 通过，时间 → 天气（自动转后台）→ 读任务结果三步链，卡片带「已转后台」状态与 JSON 参数 |
 | 附件上传 | 通过，回形针 → 系统「选择上传」→ 图库（最多 50 张）/ 拍照或录像 / 文件 |
 | 朗读（服务端 TTS） | 通过，点喇叭后按钮进播放态，`AudioRenderSink` 在渲染音频帧 |
+| 深色模式跟随系统 | 通过，应用级切 `ColorMode` 后整个 WebView 跟到深色 |
 | 下载落盘 | 通过，blob 下载 → 系统保存面板 → 文件进 `/storage/media/100/local/files/Docs` |
 | 返回键 | 通过，首页按返回回桌面，不再黑屏 |
 | 冷启动 | 首启 3.43 s、有缓存 2.6 s（`onCreate` → `page end`） |
@@ -249,6 +250,7 @@ harmony\acceptance.cmd
 | `DEBUG_API_KEY` | 页面加载完写进 `localStorage`，免去每次手输 Key（模拟器软键盘会卡） |
 | `DEBUG_HASH` | 页面加载完跳到指定 hash，例如 `#/settings/data` 直达数据页 |
 | `DEBUG_JS` | 页面加载完执行一次任意 JS，用来联调 H5 端的下载、存储之类 |
+| `DEBUG_COLOR_MODE` | `dark` / `light`，启动时用 `setColorMode` 强制颜色模式，用来验证深色跟随 |
 
 另外 `webview.WebviewController.setWebDebuggingAccess(true)` 那一行默认注释着，
 需要连 DevTools 时打开，配合 `hdc fport tcp:9222 tcp:9222`。
