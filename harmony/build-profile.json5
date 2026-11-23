@@ -1,5 +1,34 @@
 {
   "app": {
+    /*
+     * 签名配置。现在是空数组，所以只能构建出 unsigned 包——模拟器能装，真机装不上。
+     *
+     * 两种填法，二选一：
+     *
+     * 1) DevEco 自动签名（推荐，需要登录华为账号）
+     *    File → Project Structure → Signing Configs → 勾 "Automatically generate signature"
+     *    它会把 p12 / cer / p7b 生成到 ~/.ohos/config/ 并自动改写下面这段。
+     *
+     * 2) 手动填（材料在 AGC 上申请，或从别的工程拷）
+     *    取消下面的注释，把四个路径换成实际文件，密码和别名照实填：
+     *
+     *    {
+     *      "name": "default",
+     *      "type": "HarmonyOS",
+     *      "material": {
+     *        "storeFile": "./signature/app.p12",
+     *        "storePassword": "<密钥库口令>",
+     *        "keyAlias": "<密钥别名>",
+     *        "keyPassword": "<密钥口令>",
+     *        "signAlg": "SHA256withECDSA",
+     *        "profile": "./signature/app.p7b",
+     *        "certpath": "./signature/app.cer"
+     *      }
+     *    }
+     *
+     * 注意：profile（p7b）里绑定了 bundleName 和设备 UDID。bundleName 是
+     * com.zkksdk.chatdemo，换名字必须重新申请 profile；调试包还要把真机 UDID 加进去。
+     */
     "signingConfigs": [],
     "products": [
       {

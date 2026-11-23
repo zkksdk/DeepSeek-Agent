@@ -194,8 +194,11 @@ handover done: shell-test.txt -> file://docs/storage/Users/currentUser/shell-tes
 
 ## 已知限制
 
-- 未签名。模拟器能装，真机不行，需要在 DevEco 里配 `signingConfigs`。
-- 真机没测过，只在模拟器上验证。
+- 未签名。模拟器能装（实测系统不拦 unsigned），真机装不上。
+  补签名的两种做法写在 `harmony/build-profile.json5` 的 `signingConfigs` 注释里了，
+  拿到 p12 / cer / p7b 填进去就行。注意 profile 里绑定的是 `com.zkksdk.chatdemo`，
+  换 bundleName 或换真机都要重新申请。
+- 真机没测过，只在模拟器上验证过。
 - 输入区在窄屏（<768px）已改成单行横向滑动，四行压回一行。代价是靠右的胶囊
   （工作区、提示词）藏在滑动区里，需要横滑才看得到；要彻底解决得把它们收进菜单。
 - 工程路径必须是 ASCII。
