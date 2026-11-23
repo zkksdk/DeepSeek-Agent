@@ -26,7 +26,7 @@ export type Route =
   | { kind: 'settings'; section: SettingsSection; sessionId: string | null }
   | { kind: 'share'; payload: string }
 
-const SECTIONS: SettingsSection[] = ['general', 'appearance', 'agent', 'workspace', 'data']
+const SECTIONS: SettingsSection[] = ['account', 'general', 'agent', 'workspace', 'data']
 
 const isSection = (value: string): value is SettingsSection =>
   (SECTIONS as string[]).includes(value)

@@ -128,6 +128,7 @@ export const zh = {
   accountLabel: 'DeepSeek 账号',
   accountSignIn: '账号登录',
   accountSignedIn: '已登录',
+  accountSignOut: '退出登录',
   accountShellOnly: '账号登录仅在手机版可用',
   apiKeyStart: '输入 API Key 开始使用',
   apiKeyEdit: '修改 API Key',

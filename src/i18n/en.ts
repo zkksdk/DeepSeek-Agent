@@ -133,6 +133,7 @@ export const en = {
   accountLabel: 'DeepSeek account',
   accountSignIn: 'Sign in with account',
   accountSignedIn: 'Signed in',
+  accountSignOut: 'Sign out',
   accountShellOnly: 'Account sign-in is only available in the mobile app',
   apiKeyStart: 'Enter an API Key to get started',
   apiKeyEdit: 'Edit API Key',

@@ -763,6 +763,14 @@ body[data-ds-dark-theme] .slider input[type='range'] {
   border-radius: 50%;
   background: #22c55e;
   display: inline-block;
+  flex: none;
+}
+
+/* 已登录行：状态文字 + 绿点 + 退出按钮，右对齐 */
+.apiKeySaved {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .accountHint {
@@ -780,4 +788,21 @@ body[data-ds-dark-theme] .slider input[type='range'] {
 .accountBalanceValue {
   font-size: 15px;
   font-variant-numeric: tabular-nums;
+}
+
+
+.accountSignOut {
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary, #8a8f99);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.accountSignOut:hover {
+  color: var(--text-primary, #eaeaea);
+  border-color: var(--text-tertiary, #555);
 }

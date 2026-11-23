@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useSettings } from '../../services/settings.js'
 import { useTranslate } from '../../i18n/index.js'
 import { Button } from '../base/Button.js'
@@ -54,11 +54,6 @@ export const AccountSetting = () => {
     }
   }
 
-  // Key 变了就重新查一次
-  useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey])
 
   return (
     <>

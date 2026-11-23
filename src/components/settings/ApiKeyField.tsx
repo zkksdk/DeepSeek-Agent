@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { IconEditOutline16 } from '../base/icons.js'
-import { useSettings } from '../../services/settings.js'
+import { setApiKey, useSettings } from '../../services/settings.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { IconButton } from '../base/IconButton.js'
 import { useApiKeyForm } from './useApiKeyForm.js'
@@ -128,6 +128,13 @@ export const AccountField = () => {
           <div className={styles.apiKeySaved}>
             <span className={styles.accountState}>{t('accountSignedIn')}</span>
             <span className={styles.accountDot} aria-hidden="true" />
+            <button
+              type="button"
+              className={styles.accountSignOut}
+              onClick={() => setApiKey(null)}
+            >
+              {t('accountSignOut')}
+            </button>
           </div>
         ) : shell ? (
           <button

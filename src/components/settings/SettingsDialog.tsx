@@ -82,7 +82,6 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
     label: 'settingsGroupGeneral',
     icon: <IconSettingsOutline16 />,
   },
-  { value: 'appearance', label: 'settingsGroupAppearance', icon: <IconLightOutline16 /> },
   { value: 'agent', label: 'settingsGroupAgent', icon: <IconSpark /> },
   { value: 'workspace', label: 'settingsGroupWorkspace', icon: <IconFolder /> },
   { value: 'data', label: 'settingsGroupData', icon: <IconDataOutline16 /> },
@@ -143,9 +142,6 @@ const SettingsContent = () => {
               <LocationSetting />
               <UsageSetting />
               <GithubSetting />
-            </>
-          ) : section === 'appearance' ? (
-            <>
               <LookSetting />
               <GlassSetting />
               <MotionSetting />
