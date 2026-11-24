@@ -48,6 +48,7 @@ import {
   type Message,
   type Session,
   type SessionSummary,
+  type SessionMode,
   type UserMessage,
 } from './types.js'
 
@@ -536,6 +537,27 @@ export const renameSession = (id: string, title: string) => {
 }
 
 /**
+ * 切换某个会话的模式。
+ *
+ * 模式存在会话上而不是全局：同一个应用里，一个会话在干活、另一个只是闲聊，
+ * 是很正常的事。旧会话没有这个字段，按 'work' 处理（那时候 Agent 是默认开的）。
+ */
+export const setSessionMode = (id: string, mode: SessionMode) => {
+  if (get().importingHistory || deletingSessions.has(id)) {
+    return
+  }
+  if (getSession(id)) {
+    updateSession(id, (session) => ({ ...session, mode }))
+    persist(id)
+  }
+  set((state) => ({
+    sessions: state.sessions.map((session) =>
+      session.id === id ? { ...session, mode } : session
+    ),
+  }))
+}
+
+/**
  * 删除会话；本地原件仅在没有其他会话引用时清理。远端文件不删：导入、编辑、重新生成都会复用同一个附件，
  * 同一服务端文件可能被多个会话引用，不维护引用计数。
  */
@@ -629,6 +651,8 @@ export const sendMessage = (targetSessionId: string | null) => {
       updatedAt: now,
       messages: [],
       rootMessageId: null,
+      // 新会话继承当前的全局模式偏好（设置里那个开关），之后可以在会话内单独切
+      mode: useSettings.getState().agentEnabled ? 'work' : 'chat',
     }
     sessionId = session.id
     touchSession(session.id)
@@ -1088,7 +1112,9 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
   try {
     const settings = useSettings.getState()
     // 续写使用前缀，不能同时跑工具循环；关闭 agent 时退化为普通聊天。
-    const agentEnabled = settings.agentEnabled && !request.prefix
+    // 会话自己的模式优先：对话就是不调工具，工作才允许；再叠全局开关（设置里能整体关掉）
+    const sessionMode = get().sessions.find((item) => item.id === sessionId)?.mode ?? 'work'
+    const agentEnabled = sessionMode === 'work' && settings.agentEnabled && !request.prefix
     // 关掉「最大步数」后不设上限，交给用户自己盯；打开时按设置值收口
     const maxRounds = agentEnabled
       ? settings.maxStepsEnabled

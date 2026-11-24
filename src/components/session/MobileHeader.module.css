@@ -22,3 +22,27 @@
   font: var(--dsw-font-s-strong-14);
   color: var(--dsw-alias-label-primary);
 }
+
+
+/*
+ * 会话模式胶囊：贴在标题右边，点一下就在「对话 / 工作」之间切。
+ * 工作模式用品牌色标出来，一眼能看出这个会话会不会动工具。
+ */
+.modeBadge {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.modeBadge[data-mode='work'] {
+  border-color: transparent;
+  background: rgba(57, 100, 254, 0.14);
+  color: var(--dsw-alias-brand-primary);
+}

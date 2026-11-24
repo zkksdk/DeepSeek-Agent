@@ -1,4 +1,5 @@
 import { IconMenuOutline20, IconNewChatOutline20 } from '../base/icons.js'
+import { useChatStore, setSessionMode } from '../../services/chat/store.js'
 import { useTranslate } from '../../i18n/index.js'
 import { newChat } from '../../services/chat/store.js'
 import { IconButton } from '../base/IconButton.js'
@@ -20,6 +21,20 @@ export const MobileHeader = ({ title }: { title?: string }) => {
       {title === undefined ? null : (
         <>
           <div className={styles.title}>{title}</div>
+          {sessionMode === null ? null : (
+            <button
+              type="button"
+              className={styles.modeBadge}
+              data-mode={sessionMode}
+              aria-label={t('sessionModeToggle')}
+              onClick={() =>
+                activeId &&
+                setSessionMode(activeId, sessionMode === 'work' ? 'chat' : 'work')
+              }
+            >
+              {sessionMode === 'work' ? t('modeWork') : t('modeChat')}
+            </button>
+          )}
           <IconButton
             size="xl"
             tone="primary"

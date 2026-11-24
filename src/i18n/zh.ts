@@ -1,4 +1,5 @@
 export const zh = {
+  sessionModeToggle: '切换会话模式',
   modeChat: '对话',
   modeWork: '工作',
   welcomeMessageChat250808: '今天有什么可以帮到你？',

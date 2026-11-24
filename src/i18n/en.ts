@@ -1,6 +1,7 @@
 import type { zh } from './zh.js'
 
 export const en = {
+  sessionModeToggle: 'Toggle session mode',
   modeChat: 'Chat',
   modeWork: 'Work',
   welcomeMessageChat250808: 'How can I help you?',

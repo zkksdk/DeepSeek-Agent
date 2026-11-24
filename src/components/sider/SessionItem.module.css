@@ -84,3 +84,31 @@
     font-size: 16px;
   }
 }
+
+
+/*
+ * 列表里的模式标记。只给「对话」加——工作模式是默认值，
+ * 每个都标一遍反而吵，只在需要区分的时候出现。
+ */
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mode {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+/* 工作模式用品牌色，扫一眼列表就知道哪几条会动工具 */
+.mode[data-mode='work'] {
+  background: rgba(57, 100, 254, 0.14);
+  color: var(--dsw-alias-brand-primary);
+}
