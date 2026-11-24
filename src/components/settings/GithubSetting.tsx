@@ -4,7 +4,7 @@ import { Button } from '../base/Button.js'
 import { SettingCell } from './SettingCell.js'
 import styles from './Settings.module.css'
 
-export const REPO_URL = 'https://github.com/Aoan2011/DeepSeek-Agent'
+export const REPO_URL = 'https://github.com/zkksdk/DeepSeek-Agent'
 
 /** 星数缓存一小时：GitHub API 匿名限额 60 次/小时，不能每次打开设置都打一次 */
 const CACHE_KEY = 'chat-agent:github-stars'
@@ -47,7 +47,7 @@ export const GithubSetting = () => {
       return
     }
     let cancelled = false
-    void fetch('https://api.github.com/repos/Aoan2011/DeepSeek-Agent')
+    void fetch('https://api.github.com/repos/zkksdk/DeepSeek-Agent')
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { stargazers_count?: unknown } | null) => {
         const count =

@@ -8,19 +8,25 @@ import { showToast } from '../base/toastState.js'
 import { SettingCell } from './SettingCell.js'
 import styles from './Settings.module.css'
 
-/** 用量与预算：预算可改，用量记录可清空；价格只做展示与跳转 */
+/**
+ * 用量与余额警戒线。
+ *
+ * 警戒线不是预算：预算管的是"这个月最多花多少"，警戒线管的是"账户剩到这个数就提醒我"。
+ * 侧栏的余额数字低于它时标红，好让人早点去充值，别跑到一半没钱。
+ * 用量统计（今日花费、累计估算）是纯本地的，按官方价算，跟余额不是一回事。
+ */
 export const UsageSetting = () => {
   const t = useTranslate()
-  const budget = useUsage((state) => state.budget)
+  const alert = useUsage((state) => state.budget)
   const totalCost = useUsage((state) => state.totalCost)
   // 输入过程中不急着写存储，失焦或回车再提交
-  const [draft, setDraft] = useState(String(budget))
-  useEffect(() => setDraft(String(budget)), [budget])
+  const [draft, setDraft] = useState(String(alert))
+  useEffect(() => setDraft(String(alert)), [alert])
 
   const commit = () => {
     const value = Number(draft)
     if (!Number.isFinite(value) || value <= 0) {
-      setDraft(String(budget))
+      setDraft(String(alert))
       return
     }
     setBudget(value)
@@ -29,8 +35,8 @@ export const UsageSetting = () => {
   return (
     <>
       <SettingCell
-        label={t('settingsUsageBudget')}
-        description={`${t('settingsUsageBudgetHint')} · ${t('usageUsed')} ¥${totalCost.toFixed(2)}`}
+        label={t('settingsBalanceAlert')}
+        description={t('settingsBalanceAlertHint')}
         status={null}
         action={
           <label className={clsx(styles.stepper, styles.budgetStepper)}>
@@ -40,7 +46,7 @@ export const UsageSetting = () => {
               min={1}
               step={10}
               value={draft}
-              aria-label={t('settingsUsageBudget')}
+              aria-label={t('settingsBalanceAlert')}
               onChange={(event) => setDraft(event.target.value)}
               onBlur={commit}
               onKeyDown={(event) => {
@@ -54,7 +60,7 @@ export const UsageSetting = () => {
       />
       <SettingCell
         label={t('settingsUsageReset')}
-        description={t('settingsUsageResetHint')}
+        description={`${t('settingsUsageResetHint')} · ${t('usageSpentTotal')} ¥${totalCost.toFixed(2)}`}
         status={null}
         action={
           <Button

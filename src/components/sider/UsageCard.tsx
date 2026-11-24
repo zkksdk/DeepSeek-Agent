@@ -37,6 +37,8 @@ export const UsageCard = () => {
   const day = useUsage((state) => todayUsage(state))
   const apiKey = useSettings((state) => state.apiKey)
   const model = useSettings((state) => state.model)
+  // 余额警戒线：低于它就把数字标红，提醒该充值了
+  const alertLine = useUsage((state) => state.budget)
   // 余额是平台上的真钱，本地算不出来，挂上去就自动同步（进页面拉一次，之后每分钟刷）
   useBalanceSync()
   const balanceInfo = useBalance((state) => state.balance)
@@ -75,7 +77,10 @@ export const UsageCard = () => {
       <div className={styles.card}>
         <div className={styles.head}>
           <span className={styles.title}>{t('usageBalance')}</span>
-          <b className={styles.percent}>
+          <b
+            className={styles.percent}
+            data-warn={balanceValue !== null && alertLine > 0 && balanceValue < alertLine ? true : undefined}
+          >
             {balanceValue === null ? (balanceLoading ? '…' : '—') : symbol + balanceValue.toFixed(2)}
           </b>
         </div>
