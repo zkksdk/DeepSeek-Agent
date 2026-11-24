@@ -505,6 +505,8 @@ export const zh = {
   previewDownload: '下载',
   previewEmpty: '没有可预览的内容',
   // ---- 用量与预算 ----
+  usageBalance: '余额',
+  usageSpentTotal: '累计估算',
   usageBudget: '预算',
   usageToday: '今日',
   usageUsed: '已用',

@@ -514,6 +514,8 @@ export const en = {
   previewDownload: 'Download',
   previewEmpty: 'Nothing to preview',
   // ---- usage and budget ----
+  usageBalance: 'Balance',
+  usageSpentTotal: 'Estimated',
   usageBudget: 'Budget',
   usageToday: 'Today',
   usageUsed: 'Used',

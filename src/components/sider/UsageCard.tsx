@@ -13,6 +13,7 @@ import {
   rateLabel,
 } from '../../services/pricing.js'
 import { todayUsage, useUsage } from '../../services/usage.js'
+import { balanceAmount, currencySymbol, useBalance, useBalanceSync } from '../../services/balance.js'
 import { openSettings } from '../settings/settingsDialogState.js'
 import styles from './UsageCard.module.css'
 
@@ -32,11 +33,16 @@ const IconUser = () => (
  */
 export const UsageCard = () => {
   const t = useTranslate()
-  const budget = useUsage((state) => state.budget)
   const totalCost = useUsage((state) => state.totalCost)
   const day = useUsage((state) => todayUsage(state))
   const apiKey = useSettings((state) => state.apiKey)
   const model = useSettings((state) => state.model)
+  // 余额是平台上的真钱，本地算不出来，挂上去就自动同步（进页面拉一次，之后每分钟刷）
+  useBalanceSync()
+  const balanceInfo = useBalance((state) => state.balance)
+  const balanceLoading = useBalance((state) => state.loading)
+  const balanceValue = balanceAmount(balanceInfo)
+  const symbol = currencySymbol(balanceInfo)
   // 倒计时每 30 秒刷新一次即可，不必跟秒
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -44,8 +50,6 @@ export const UsageCard = () => {
     return () => window.clearInterval(timer)
   }, [])
 
-  const percent = budget > 0 ? Math.min(100, (totalCost / budget) * 100) : 0
-  const todayPercent = budget > 0 ? (day.cost / budget) * 100 : 0
   const tokens = day.hit + day.miss + day.output
   const modelCount = Object.keys(day.models).length
   const peak = isPeak(now)
@@ -61,25 +65,28 @@ export const UsageCard = () => {
   const changeText =
     change.label === '进入高峰' ? t('usageEnterPeak', { time: formatDuration(change.at - now.getTime()) }) : t('usageBackOff', { time: formatDuration(change.at - now.getTime()) })
 
+  // 今日花费占余额的比例
+  const fillWidth =
+    balanceValue && balanceValue > 0
+      ? `${Math.min(100, (day.cost / balanceValue) * 100).toFixed(1)}%`
+      : '0%'
   return (
     <div className={styles.wrap}>
       <div className={styles.card}>
         <div className={styles.head}>
-          <span className={styles.title}>{t('usageBudget')}</span>
-          <b className={styles.percent} data-warn={percent >= 90 || undefined}>
-            {percent.toFixed(1)}%
+          <span className={styles.title}>{t('usageBalance')}</span>
+          <b className={styles.percent}>
+            {balanceValue === null ? (balanceLoading ? '…' : '—') : symbol + balanceValue.toFixed(2)}
           </b>
         </div>
-        <div className={styles.track} role="img" aria-label={`${t('usageBudget')} ${percent.toFixed(1)}%`}>
-          <span className={styles.fill} style={{ width: `${percent}%` }} data-warn={percent >= 90 || undefined} />
+        <div className={styles.track} role="img" aria-label={t('usageBalance')}>
+          <span className={styles.fill} style={{ width: fillWidth }} />
         </div>
         <div className={styles.meta}>
           <span>
-            {t('usageToday')} ¥{formatMoney(day.cost)} · {t('usageOfBudget', { pct: todayPercent.toFixed(1) })}
+            {t('usageToday')} ¥{formatMoney(day.cost)}
           </span>
-          <span>
-            {t('usageUsed')} ¥{formatMoney(totalCost)} / ¥{formatMoney(budget)}
-          </span>
+          <span>{t('usageSpentTotal')} ¥{formatMoney(totalCost)}</span>
         </div>
       </div>
 
