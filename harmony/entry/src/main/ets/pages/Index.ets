@@ -307,6 +307,11 @@ struct Index {
           'Origin': 'https://platform.deepseek.com',
           'Referer': 'https://platform.deepseek.com/',
           'User-Agent': 'Mozilla/5.0 (Linux; HarmonyOS) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          // 平台的 auth_exchange 校验客户端身份，缺 x-client-platform 直接 422：
+          //   {"detail":[{"loc":"header.x-client-platform"}]}
+          'x-client-platform': 'web',
+          'x-client-type': 'DSH',
+          'x-client-version': '1.0.1',
         },
         extraData: body,
         connectTimeout: 15000,
