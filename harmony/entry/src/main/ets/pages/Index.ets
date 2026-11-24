@@ -3,7 +3,7 @@ import { webview } from '@kit.ArkWeb'
 import { fileIo as fs, picker } from '@kit.CoreFileKit'
 import { notificationManager } from '@kit.NotificationKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
-import { window } from '@kit.ArkUI'
+import { KeyboardAvoidMode, window } from '@kit.ArkUI'
 import { cryptoFramework } from '@kit.CryptoArchitectureKit'
 import { http } from '@kit.NetworkKit'
 import { util } from '@kit.ArkTS'
@@ -57,6 +57,8 @@ const OAUTH_INIT_URL: string = 'https://platform.deepseek.com/auth-api/v0/dsh/au
 const OAUTH_EXCHANGE_URL: string = 'https://platform.deepseek.com/auth-api/v0/dsh/auth_exchange'
 /** 登录中途应用被杀时，PKCE verifier 靠它活下来 */
 const OAUTH_VERIFIER_KEY: string = 'oauth:pending-verifier'
+/** 稳定设备标识的存储键 */
+const OAUTH_DEVICE_KEY: string = 'oauth:device-id'
 
 /** 把未捕获异常和 console.error 转给原生，黑屏才有据可查 */
 const ERROR_WATCH: string =
@@ -227,11 +229,17 @@ struct Index {
   /** 注入给页面的原生桥，见 ShellBridge */
   private bridge: ShellBridge | undefined = undefined
   @State private assetsReady: boolean = false
+  /** 状态栏高度（vp）。全屏后窗口铺到状态栏后面，内容靠这个内边距避让。
+   *  先给 36 兜底：aboutToAppear 阶段 getWindowAvoidArea 往往还没量出来，
+   *  真要等它就等于让内容先压到状态栏下面去。 */
+  @State private safeTop: number = 36
   @State private failure: string = ''
   /** 当前页面 hash，用来判断是否在设置页（SPA 路由不触发 onPageEnd） */
   @State private currentHash: string = ''
   /** OAuth 中间态：PKCE verifier 和本次授权的 id */
   private pendingVerifier: string = ''
+  /** 设备标识：首次生成后固定下来，auth_exchange 的 device_id 用它 */
+  private deviceId: string = ''
   private pendingAuthorizeId: string = ''
 
   aboutToAppear(): void {
@@ -247,7 +255,23 @@ struct Index {
     this.bridge.onLogin = () => {
       this.startAccountLogin()
     }
+    // 键盘避让交给 ArkWeb 自己处理。
+    // ArkUI 默认是 OFFSET：键盘弹出时把整个 Web 组件往上推；ArkWeb 内部也会把
+    // 输入框滚进可视区。两者叠加会把画面顶崩——真机上表现为点 API Key 输入框后整屏黑。
+    this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.NONE)
     this.downloadDir = context.filesDir + '/downloads'
+    setTimeout(() => {
+      window.getLastWindow(context).then((win) => {
+        const avoid = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM)
+        const top = px2vp(avoid.topRect.height)
+        hilog.info(DOMAIN, TAG, 'avoid top = %{public}d vp', top)
+        if (top > 0) {
+          this.safeTop = top + 8
+        }
+      }).catch((error: Error) => {
+        hilog.warn(DOMAIN, TAG, 'read avoid area failed: %{public}s', error.message)
+      })
+    }, 600)
     if (!fs.accessSync(this.downloadDir)) {
       fs.mkdirSync(this.downloadDir, true)
     }
@@ -288,10 +312,17 @@ struct Index {
     const toUrlSafe = (raw: string): string => raw.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
     const verifier = toUrlSafe(b64.encodeToStringSync(bytes.data))
 
+    // PKCE 规范：challenge = BASE64URL(SHA256(ASCII(verifier)))，也就是对 verifier
+    // 这个字符串本身做哈希。拿原始随机字节去 hash 会得到一对不配套的值，
+    // 服务端校验时只回一个 INVALID_CODE，看不出是 PKCE 的锅。
+    const encoder = new util.TextEncoder()
+    const verifierBytes = encoder.encodeInto(verifier)
     const md = cryptoFramework.createMd('SHA256')
-    await md.update({ data: bytes.data })
+    await md.update({ data: verifierBytes })
     const digest = await md.digest()
     const challenge = toUrlSafe(b64.encodeToStringSync(digest.data))
+    hilog.info(DOMAIN, TAG, 'pkce verifier=%{public}s', verifier)
+    hilog.info(DOMAIN, TAG, 'pkce challenge=%{public}s', challenge)
     return [verifier, challenge]
   }
 
@@ -335,7 +366,7 @@ struct Index {
         code: code,
         code_verifier: verifier,
         redirect_uri: OAUTH_REDIRECT,
-        device_id: this.pendingAuthorizeId,
+        device_id: this.deviceId,
         'device_model': 'HUAWEI-HarmonyOS',
         'os_version': 'HarmonyOS',
       })
@@ -357,6 +388,31 @@ struct Index {
       // 用户以为卡死，只能杀应用（而一杀，PKCE verifier 就没了）。
       this.controller.loadUrl(HOME_URL)
     }
+  }
+
+  /** 设备标识：第一次生成后写进 localStorage，之后一直用它 */
+  private async ensureDeviceId(): Promise<void> {
+    if (this.deviceId.length > 0) {
+      return
+    }
+    try {
+      const saved = await this.controller.runJavaScript(
+        "localStorage.getItem('" + OAUTH_DEVICE_KEY + "') || ''")
+      if (typeof saved === 'string' && saved.length > 0) {
+        this.deviceId = saved
+        return
+      }
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'read device id failed: %{public}s', (error as Error).message)
+    }
+    this.deviceId = util.generateRandomUUID()
+    try {
+      await this.controller.runJavaScript(
+        "localStorage.setItem('" + OAUTH_DEVICE_KEY + "', " + JSON.stringify(this.deviceId) + ")")
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'persist device id failed: %{public}s', (error as Error).message)
+    }
+    hilog.info(DOMAIN, TAG, 'device id ready')
   }
 
   /** 取 PKCE verifier：先看内存，再看上次登录时落盘的那份 */
@@ -393,6 +449,7 @@ struct Index {
 
   /** PKCE → auth_init → 打开官方授权页；回调由 intercept 接住 */
   private async runAccountLogin(): Promise<void> {
+    await this.ensureDeviceId()
     const pkce = await this.makePkce()
     const verifier = pkce[0]
     const challenge = pkce[1]
@@ -626,11 +683,17 @@ struct Index {
   }
 
   build() {
-    Stack() {
+    // 根节点给深色底：状态栏那段是窗口背景，不铺色就会露出白色，看起来像屏幕上方有一条白条。
+    Column() {
+      // 全屏后窗口铺到状态栏后面，这里把内容整体让开一格
+      Blank().height(this.safeTop)
+      Stack() {
       if (this.assetsReady) {
         Web({ src: HOME_URL, controller: this.controller })
           .width('100%')
           .height('100%')
+
+
           .javaScriptAccess(true)
           .domStorageAccess(true)
           .databaseAccess(true)
@@ -712,6 +775,10 @@ struct Index {
       }
     }
     .width('100%')
+    .layoutWeight(1)
+    }
+    .width('100%')
     .height('100%')
+    .backgroundColor('#11161d')
   }
 }
