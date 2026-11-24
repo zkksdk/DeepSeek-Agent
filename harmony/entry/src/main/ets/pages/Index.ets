@@ -914,6 +914,21 @@ struct Index {
               .catch((error: Error) => {
                 hilog.warn(DOMAIN, TAG, 'bridge probe failed: %{public}s', error.message)
               })
+this.controller
+              .runJavaScript("(function(){try{" +
+                "var q = document.querySelectorAll('[class*=quick]');" +
+                "var out = 'count=' + q.length;" +
+                "for (var i = 0; i < q.length && i < 3; i++) {" +
+                " var s = getComputedStyle(q[i]);" +
+                " out += ' | ' + q[i].className.slice(0,40) + ' display=' + s.display + ' h=' + Math.round(q[i].getBoundingClientRect().height);" +
+                "}" +
+                "return out}catch(e){return 'ERR ' + e.message}})()")
+              .then((value) => {
+                hilog.info(DOMAIN, TAG, 'quick probe: %{public}s', String(value))
+              })
+              .catch((error: Error) => {
+                hilog.warn(DOMAIN, TAG, 'quick probe failed: %{public}s', error.message)
+              })
             this.injectSafeArea()
             this.controller
               .runJavaScript("(function(){try{" +

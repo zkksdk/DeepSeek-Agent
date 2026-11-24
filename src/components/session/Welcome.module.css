@@ -175,6 +175,18 @@ body[data-ds-dark-theme] .cap:hover {
   margin-top: 14px;
 }
 
+/* 移动端：屏幕窄，两列会挤成一坨，改成单列竖排（和豆包那类首页一致） */
+.quick[data-mobile] {
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.quick[data-mobile] .quickCard {
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
 .quickCard {
   position: relative;
   display: flex;
@@ -347,6 +359,31 @@ body[data-ds-dark-theme] .greetingText::after {
   .inputWrap {
     width: 100%;
   }
+  /*
+   * 移动端顺序：标题 → 模式切换 → 推荐问题 → 输入框。
+   * DOM 里推荐问题排在输入框后面（桌面端就是这样），移动端不动顺序会被挤出屏幕。
+   */
+  .greeting {
+    order: 1;
+  }
+
+  .modeTabs {
+    order: 2;
+    margin-bottom: 14px;
+  }
+
+  .quick[data-mobile] {
+    order: 3;
+    margin-bottom: 14px;
+  }
+
+  .inputWrap {
+    order: 4;
+  }
+
+  .caveat {
+    order: 5;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -434,4 +471,43 @@ body[data-look='calm'][data-ds-dark-theme] .quickCard,
 body[data-look='calm'][data-ds-dark-theme] .quickCard:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: var(--dsw-alias-border-l2);
+}
+
+
+/*
+ * 新对话的模式切换：对话 / 工作。
+ * 对话是纯聊天；工作允许模型调用工具（Agent），界面上用胶囊按钮区分。
+ */
+.modeTabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.modeTab {
+  padding: 7px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition:
+    background 0.2s var(--ds-ease-in-out),
+    color 0.2s var(--ds-ease-in-out);
+}
+
+.modeTab[data-active] {
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+}
+
+body[data-ds-dark-theme] .modeTab[data-active] {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
 }

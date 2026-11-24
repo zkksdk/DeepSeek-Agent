@@ -29,7 +29,7 @@
      * 注意：profile（p7b）里绑定了 bundleName 和设备 UDID。bundleName 是
      * com.zkksdk.chatdemo，换名字必须重新申请 profile；调试包还要把真机 UDID 加进去。
      */
-    "signingConfigs": [],,
+    "signingConfigs": [],
     "products": [
       {
         "name": "default",

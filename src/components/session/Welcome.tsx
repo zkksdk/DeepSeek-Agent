@@ -5,6 +5,7 @@ import { ChatInput } from '../chatInput/ChatInput.js'
 import { LiveStatsBar } from '../chatInput/LiveStatsBar.js'
 import { MobileHeader } from './MobileHeader.js'
 import { setDraftText } from '../../services/chat/drafts.js'
+import { setAgentEnabled, useSettings } from '../../services/settings.js'
 import { listTools, subscribeTools } from '../../services/agent/registry.js'
 import { isExtensionAvailable, subscribeExtension } from '../../services/agent/extension.js'
 import { useDesktop } from '../../services/agent/desktop/store.js'
@@ -16,6 +17,8 @@ import styles from './Welcome.module.css'
 /** 新对话：问候语 + 能力概览 + 输入框。桌面端居中；移动端输入框吸底 */
 export const Welcome = () => {
   const t = useTranslate()
+  // 对话 = 纯聊天；工作 = 允许模型调工具（Agent）
+  const agentEnabled = useSettings((state) => state.agentEnabled)
   const isMobile = useIsMobile()
   const toolCount = useSyncExternalStore(
     subscribeTools,
@@ -58,6 +61,29 @@ export const Welcome = () => {
           <span className={styles.greetingText}>{t('welcomeMessageChat250808')}</span>
         </h1>
         <p className={styles.tagline}>{t('agentWelcomeTagline')}</p>
+
+        <div className={styles.modeTabs} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            className={styles.modeTab}
+            aria-selected={!agentEnabled}
+            data-active={!agentEnabled || undefined}
+            onClick={() => setAgentEnabled(false)}
+          >
+            {t('modeChat')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className={styles.modeTab}
+            aria-selected={agentEnabled}
+            data-active={agentEnabled || undefined}
+            onClick={() => setAgentEnabled(true)}
+          >
+            {t('modeWork')}
+          </button>
+        </div>
 
         <div className={styles.caps}>
           <button
@@ -107,8 +133,7 @@ export const Welcome = () => {
           <LiveStatsBar sessionId={null} />
         </div>
 
-        {!isMobile ? (
-          <div className={styles.quick}>
+          <div className={styles.quick} data-mobile={isMobile || undefined}>
             {quick.map((item, index) => (
               <button
                 key={item.key}
@@ -122,7 +147,6 @@ export const Welcome = () => {
               </button>
             ))}
           </div>
-        ) : null}
         {isMobile ? <div className={styles.caveat}>{t('contentCaveat')}</div> : null}
       </div>
     </div>
