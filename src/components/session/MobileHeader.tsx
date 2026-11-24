@@ -9,6 +9,12 @@ import styles from './MobileHeader.module.css'
 /** 移动端顶栏：左侧菜单打开侧边栏；会话页再显示标题与开启新对话 */
 export const MobileHeader = ({ title }: { title?: string }) => {
   const t = useTranslate()
+  // 当前会话的模式；没打开会话时不显示这个胶囊
+  const activeId = useChatStore((state) => state.activeId)
+  const mode = useChatStore((state) =>
+    state.sessions.find((item) => item.id === state.activeId)?.mode
+  )
+  const sessionMode = activeId ? (mode ?? 'work') : null
   return (
     <div className={styles.header}>
       <IconButton
