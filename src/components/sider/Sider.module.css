@@ -7,7 +7,8 @@
   box-sizing: border-box;
   width: 261px;
   height: 100%;
-  padding: 6px 12px 0;
+  /* 沉浸式全屏下侧边栏也要给状态栏和导航条让位 */
+  padding: calc(6px + var(--ds-safe-top, 0px)) 12px var(--ds-safe-bottom, 0px);
   border-right: 1px solid var(--dsw-alias-border-l1);
   background-color: var(--dsw-specific-sidebar-fill);
   transition: background-color 0.3s var(--ds-ease-in-out);

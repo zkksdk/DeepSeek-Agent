@@ -5,8 +5,9 @@
   align-items: center;
   flex-shrink: 0;
   box-sizing: border-box;
-  height: 60px;
-  padding: 12px 10px 4px;
+  /* 沉浸式全屏下头部要给状态栏让位；--ds-safe-top 由鸿蒙壳注入 */
+  height: calc(60px + var(--ds-safe-top, 0px));
+  padding: calc(12px + var(--ds-safe-top, 0px)) 10px 4px;
   /* 顶栏是透明的，消息滚上来由顶部的渐进式模糊压住 */
   background: none;
 }

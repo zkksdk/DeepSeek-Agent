@@ -232,9 +232,9 @@ struct Index {
   /** 状态栏高度（vp）。全屏后窗口铺到状态栏后面，内容靠这个内边距避让。
    *  先给 36 兜底：aboutToAppear 阶段 getWindowAvoidArea 往往还没量出来，
    *  真要等它就等于让内容先压到状态栏下面去。 */
-  @State private safeTop: number = 36
+  @State @Watch('onSafeAreaChanged') private safeTop: number = 36
   /** 底部导航条高度（vp）。同理，底部也要让开，否则最下面那行字会被压住裁掉 */
-  @State private safeBottom: number = 0
+  @State @Watch('onSafeAreaChanged') private safeBottom: number = 0
   @State private failure: string = ''
   /** 当前页面 hash，用来判断是否在设置页（SPA 路由不触发 onPageEnd） */
   @State private currentHash: string = ''
@@ -394,6 +394,26 @@ struct Index {
       // 不管换 token 成没成，都要离开回调页。否则页面停在 localhost 那屏，
       // 用户以为卡死，只能杀应用（而一杀，PKCE verifier 就没了）。
       this.controller.loadUrl(HOME_URL)
+    }
+  }
+
+  /**
+   * 把安全区尺寸推给页面。启动那一刻量不到真实值（先给 36 兜底），
+   * 600ms 后测到真值必须重推一次，否则页面一直按兜底值排版，
+   * 侧边栏标题就会压在状态栏上。
+   */
+  private injectSafeArea(): void {
+    const script = 'document.documentElement.style.setProperty("--ds-safe-top","' +
+      this.safeTop + 'px");document.documentElement.style.setProperty("--ds-safe-bottom","' +
+      this.safeBottom + 'px");'
+    this.controller.runJavaScript(script).catch((error: Error) => {
+      hilog.warn(DOMAIN, TAG, 'safe area inject failed: %{public}s', error.message)
+    })
+  }
+
+  onSafeAreaChanged(): void {
+    if (this.assetsReady) {
+      this.injectSafeArea()
     }
   }
 
@@ -692,8 +712,6 @@ struct Index {
   build() {
     // 根节点给深色底：状态栏那段是窗口背景，不铺色就会露出白色，看起来像屏幕上方有一条白条。
     Column() {
-      // 全屏后窗口铺到状态栏后面，这里把内容整体让开一格
-      Blank().height(this.safeTop)
       Stack() {
       if (this.assetsReady) {
         Web({ src: HOME_URL, controller: this.controller })
@@ -739,6 +757,7 @@ struct Index {
               .catch((error: Error) => {
                 hilog.warn(DOMAIN, TAG, 'auth patch failed: %{public}s', error.message)
               })
+            this.injectSafeArea()
             this.controller
               .runJavaScript(ERROR_WATCH)
               .catch((error: Error) => {
@@ -783,7 +802,6 @@ struct Index {
     }
     .width('100%')
     .layoutWeight(1)
-      Blank().height(this.safeBottom)
     }
     .width('100%')
     .height('100%')

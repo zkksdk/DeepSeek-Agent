@@ -96,7 +96,7 @@ body[data-ds-dark-theme] .wrapper[data-glass].home {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  padding: 12px 12px 0;
+  padding: 12px 12px var(--ds-safe-bottom, 0px);
   overflow-x: auto;
   cursor: default;
 }
