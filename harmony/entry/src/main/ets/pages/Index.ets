@@ -242,6 +242,15 @@ struct Index {
   private pendingVerifier: string = ''
   /** 设备标识：首次生成后固定下来，auth_exchange 的 device_id 用它 */
   private deviceId: string = ''
+  /**
+   * 待写入的账号 token。
+   *
+   * 关键：换 token 时页面还在 http://localhost:8080/oauth/callback 这个 origin 上，
+   * 直接 runJavaScript 写 localStorage 会写进 localhost 的存储，等 loadUrl 回到
+   * app.local 就是另一个 origin，读不到。所以先存字段，等回到 app.local 的
+   * onPageEnd 再写。
+   */
+  private pendingToken: string = ''
   private pendingAuthorizeId: string = ''
 
   aboutToAppear(): void {
@@ -385,10 +394,9 @@ struct Index {
         return
       }
       const token = envelope.data.biz_data.token
-      const script = "localStorage.setItem('" + API_KEY_STORAGE + "', " + JSON.stringify('dsh:' + token) + ")" +
-        "; localStorage.removeItem('" + OAUTH_VERIFIER_KEY + "')"
-      await this.controller.runJavaScript(script)
-      hilog.info(DOMAIN, TAG, 'account token stored, reloading')
+      // 不能在这里写 localStorage：当前 origin 还是 localhost:8080。
+      this.pendingToken = 'dsh:' + token
+      hilog.info(DOMAIN, TAG, 'account token received (%{public}d chars), will store on app.local', this.pendingToken.length)
       this.pendingVerifier = ''
     } finally {
       // 不管换 token 成没成，都要离开回调页。否则页面停在 localhost 那屏，
@@ -757,7 +765,33 @@ struct Index {
               .catch((error: Error) => {
                 hilog.warn(DOMAIN, TAG, 'auth patch failed: %{public}s', error.message)
               })
+            if (this.pendingToken.length > 0 && event.url.startsWith(APP_ORIGIN)) {
+              const value = JSON.stringify(this.pendingToken)
+              const script = "localStorage.setItem('" + API_KEY_STORAGE + "', " + value + ")" +
+                "; localStorage.removeItem('" + OAUTH_VERIFIER_KEY + "')"
+              this.controller
+                .runJavaScript(script)
+                .then(() => {
+                  hilog.info(DOMAIN, TAG, 'account token stored to app.local')
+                  this.pendingToken = ''
+                  this.controller.loadUrl(HOME_URL)
+                })
+                .catch((error: Error) => {
+                  hilog.error(DOMAIN, TAG, 'store token failed: %{public}s', error.message)
+                })
+            }
             this.injectSafeArea()
+            this.controller
+              .runJavaScript("(function(){try{" +
+                "var k = localStorage.getItem('" + API_KEY_STORAGE + "');" +
+                "return k === null ? 'NO_KEY' : ('HAS_KEY len=' + k.length + ' head=' + k.slice(0,6));" +
+                "}catch(e){return 'ERR ' + e.message}})()")
+              .then((value) => {
+                hilog.info(DOMAIN, TAG, 'api key state: %{public}s', String(value))
+              })
+              .catch((error: Error) => {
+                hilog.warn(DOMAIN, TAG, 'api key probe failed: %{public}s', error.message)
+              })
             this.controller
               .runJavaScript(ERROR_WATCH)
               .catch((error: Error) => {
