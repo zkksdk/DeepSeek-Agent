@@ -136,7 +136,7 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
             title={liveCount > 0 ? t('agentConnected') : t('agentDisconnected')}
           />
         </button>
-        <button type="button" className={styles.settings} onClick={() => openSettings('general')}>
+        <button type="button" className={styles.settings} onClick={() => openSettings('account')}>
           <span className={styles.settingsIcon}>
             <IconSettingsOutline16 />
           </span>

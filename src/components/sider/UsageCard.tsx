@@ -107,7 +107,7 @@ export const UsageCard = () => {
         {t('usagePricing')}
       </a>
 
-      <button type="button" className={styles.login} onClick={() => openSettings('data')}>
+      <button type="button" className={styles.login} onClick={() => openSettings('account')}>
         <span className={styles.loginIcon}>
           <IconUser />
         </span>

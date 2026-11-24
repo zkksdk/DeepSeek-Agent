@@ -261,13 +261,16 @@ export const useSettings = create<Settings>(() => ({
   animSpeed: readAnimSpeed(),
   // 默认中性克制：极光那套太像「AI 生成的落地页」，需要的用户在设置里切回来
   look: read(KEYS.look) === 'aurora' ? 'aurora' : 'calm',
-  // 默认液态玻璃（侧栏、输入框、右侧导航）；设置等大面板始终是普通毛玻璃
+  // 默认关闭玻璃效果。
+  // backdrop-filter 在 ArkWeb 上要每帧重新采样背景，侧栏和输入框这种大面积区域
+  // 叠起来很吃 GPU。关掉不影响任何功能，只是少一点通透感；
+  // 想要的话设置里还有「毛玻璃」和「液态玻璃」两档。
   glass:
-    read(KEYS.glass) === 'off'
-      ? 'off'
+    read(KEYS.glass) === 'liquid'
+      ? 'liquid'
       : read(KEYS.glass) === 'frost'
         ? 'frost'
-        : 'liquid',
+        : 'off',
   // 精确词表 1.5MB，默认走估算，需要时在设置里切换
   tokenCounter: read(KEYS.tokenCounter) === 'exact' ? 'exact' : 'fast',
   parallelTools: clampParallel(Number(read(KEYS.parallelTools) ?? 4)),

@@ -291,6 +291,11 @@ body[data-ds-dark-theme] .sider[data-glass] .bottom {
 }
 
 .mobile {
+  /* 抽屉必须是不透明的：液态玻璃那套是半透明 + backdrop-filter，
+     抽屉盖在主内容上时，底下的顶栏汉堡按钮会透出来，看着像个残缺的怪符号。
+     这里用实色底把下面挡死。 */
+  background-color: var(--dsw-specific-sidebar-fill);
+  backdrop-filter: none;
   width: 300px;
   max-width: calc(100vw - 48px);
 
