@@ -2,7 +2,12 @@ import { create } from 'zustand'
 import { demoWorkspace } from './demo.js'
 import { diffWorkspace } from './diff.js'
 import { deleteHandle, ensurePermission, loadHandle, saveHandle } from './handles.js'
-import { pickDirectory, readLocalWorkspace } from './local.js'
+import {
+  canPickDirectoryViaShell,
+  pickDirectory,
+  pickFolderViaShell,
+  readLocalWorkspace,
+} from './local.js'
 import type { WorkspaceSnapshot, WorkspaceSource } from './types.js'
 
 export type BranchData = {
@@ -387,6 +392,36 @@ export const openLocalWorkspace = async () => {
   }
   useWorkspace.setState({ loading: true, error: null })
   try {
+    // 鸿蒙壳：选目录、遍历、读文件都在原生侧做完，这里拿到的是文件快照
+    if (canPickDirectoryViaShell()) {
+      const folder = await pickFolderViaShell()
+      if (!folder) {
+        useWorkspace.setState({ loading: false })
+        return
+      }
+      const sameShell = state.entries.find(
+        (entry) => entry.source === 'local' && entry.name === folder.name
+      )
+      const shellEntry: WorkspaceEntry = {
+        id: sameShell?.id ?? `local-${Date.now().toString(36)}`,
+        name: folder.name,
+        source: 'local',
+        root: 'local',
+        branch: '工作区',
+        branches: [],
+        files: clone(folder.files),
+        base: clone(folder.files),
+        truncated: folder.truncated,
+      }
+      useWorkspace.setState((current) => ({
+        loading: false,
+        entries: [...current.entries.filter((item) => item.id !== shellEntry.id), shellEntry],
+        activeId: shellEntry.id,
+        ...mirror(shellEntry),
+        error: Object.keys(folder.files).length === 0 ? 'empty' : null,
+      }))
+      return
+    }
     const handle = await pickDirectory()
     // 同一个目录重复打开时复用已有工作区，避免列表里堆同名项
     const same = state.entries.find(

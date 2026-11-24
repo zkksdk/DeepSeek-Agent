@@ -6,9 +6,43 @@ type DirectoryPicker = (options?: {
   mode?: 'read' | 'readwrite'
 }) => Promise<FileSystemDirectoryHandle>
 
-export const canPickDirectory = () =>
-  typeof (window as Window & { showDirectoryPicker?: DirectoryPicker }).showDirectoryPicker ===
+type ShellPicker = { pickFolder?: () => Promise<string> }
+
+/** 壳里有没有原生的文件夹选择（鸿蒙版走这条） */
+export const canPickDirectoryViaShell = () =>
+  typeof (window as unknown as { __DS_SHELL__?: ShellPicker }).__DS_SHELL__?.pickFolder ===
   'function'
+
+/** 能选目录：壳优先，其次浏览器原生 */
+export const canPickDirectory = () =>
+  canPickDirectoryViaShell() ||
+  typeof (window as Window & { showDirectoryPicker?: DirectoryPicker }).showDirectoryPicker ===
+    'function'
+
+export type ShellFolder = {
+  files: Record<string, string>
+  truncated: boolean
+  name: string
+}
+
+/**
+ * 让壳去选文件夹并读文件。
+ *
+ * ArkWeb 没有 showDirectoryPicker，所以选目录、遍历、读文本都在壳里做了，
+ * 这里只拿到一份 { path: content } 快照。代价是拿不到目录句柄，无法持久化——
+ * 重启后这一条要重选，但至少能用。
+ */
+export const pickFolderViaShell = async (): Promise<ShellFolder | null> => {
+  const shell = (window as unknown as { __DS_SHELL__?: ShellPicker }).__DS_SHELL__
+  if (!shell?.pickFolder) {
+    return null
+  }
+  const raw = await shell.pickFolder()
+  if (!raw) {
+    return null
+  }
+  return JSON.parse(raw) as ShellFolder
+}
 
 export const pickDirectory = async (): Promise<FileSystemDirectoryHandle> => {
   const picker = (window as Window & { showDirectoryPicker?: DirectoryPicker })

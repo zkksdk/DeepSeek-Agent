@@ -117,6 +117,13 @@ const DIRECTORY_PICKER_PATCH: string =
   "{value:undefined,configurable:true,writable:true})}catch(e){}" +
   "return typeof window.showDirectoryPicker})()"
 
+/** 遍历文件夹时跳过的目录，跟 web 端保持一致 */
+const SKIP_DIRS: Set<string> = new Set<string>([
+  '.git', 'node_modules', 'dist', 'build', 'out', '.next', '.nuxt',
+  '.cache', '.turbo', '.venv', 'venv', '__pycache__', 'target',
+  'vendor', 'coverage', '.idea', '.vscode'
+])
+
 /** 与 src/services/settings.ts 里的 KEYS.apiKey 保持一致 */
 const API_KEY_STORAGE: string = 'chat-demo:api-key'
 
@@ -173,6 +180,83 @@ class ShellBridge {
   /** 页面把 console/error 转给原生，方便在 hilog 里看 */
   log(message: string): void {
     hilog.info(DOMAIN, TAG, 'web: %{public}s', message.slice(0, 400))
+  }
+
+  /**
+   * 选一个文件夹并把里面的文本文件读出来。
+   *
+   * ArkWeb 没有 showDirectoryPicker，上游那套 FileSystemDirectoryHandle
+   * 在鸿蒙上跑不起来，所以把「选目录 + 遍历 + 读文本」整个搬到壳里，
+   * 结果按 { files: { path: content }, truncated, name } 回给页面。
+   */
+  async pickFolder(): Promise<string> {
+    try {
+      const documentPicker = new picker.DocumentViewPicker(this.context)
+      const options = new picker.DocumentSelectOptions()
+      options.maxSelectNumber = 1
+      options.selectMode = picker.DocumentSelectMode.FOLDER
+      const uris = await documentPicker.select(options)
+      if (uris.length === 0) {
+        return ''
+      }
+      const rootUri: string = uris[0]
+      const files: Record<string, string> = {}
+      let truncated = false
+      let count = 0
+      const walk = (dirUri: string, prefix: string, depth: number): void => {
+        if (depth > 8 || truncated) {
+          return
+        }
+        let names: string[] = []
+        try {
+          names = fs.listFileSync(dirUri)
+        } catch (error) {
+          hilog.warn(DOMAIN, TAG, 'list failed: %{public}s', (error as Error).message)
+          return
+        }
+        for (const name of names) {
+          if (count >= 400) {
+            truncated = true
+            return
+          }
+          if (SKIP_DIRS.has(name) || name.startsWith('.')) {
+            continue
+          }
+          const childUri: string = dirUri + '/' + name
+          const childPath: string = prefix.length > 0 ? prefix + '/' + name : name
+          let stat: fs.Stat | null = null
+          try {
+            stat = fs.statSync(childUri)
+          } catch (error) {
+            continue
+          }
+          if (stat.isDirectory()) {
+            walk(childUri, childPath, depth + 1)
+            continue
+          }
+          if (stat.size > 160 * 1024) {
+            continue
+          }
+          try {
+            files[childPath] = fs.readTextSync(childUri)
+            count += 1
+          } catch (error) {
+            // 非文本文件读不出来，跳过
+          }
+        }
+      }
+      walk(rootUri, '', 0)
+      const payload: Record<string, Object> = {
+        'files': files,
+        'truncated': truncated,
+        'name': decodeURIComponent(rootUri.slice(rootUri.lastIndexOf('/') + 1))
+      }
+      hilog.info(DOMAIN, TAG, 'pickFolder: %{public}d files', count)
+      return JSON.stringify(payload)
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'pickFolder failed: %{public}s', (error as Error).message)
+      return ''
+    }
   }
 
   /**
@@ -782,7 +866,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log', 'locate'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
@@ -818,6 +902,18 @@ struct Index {
                   hilog.error(DOMAIN, TAG, 'store token failed: %{public}s', error.message)
                 })
             }
+            this.controller
+              .runJavaScript("(function(){try{" +
+                "var s = window.__DS_SHELL__;" +
+                "if(!s) return 'NO_SHELL';" +
+                "return 'locate=' + typeof s.locate + ' pickFolder=' + typeof s.pickFolder;" +
+                "}catch(e){return 'ERR ' + e.message}})()")
+              .then((value) => {
+                hilog.info(DOMAIN, TAG, 'bridge probe: %{public}s', String(value))
+              })
+              .catch((error: Error) => {
+                hilog.warn(DOMAIN, TAG, 'bridge probe failed: %{public}s', error.message)
+              })
             this.injectSafeArea()
             this.controller
               .runJavaScript("(function(){try{" +
