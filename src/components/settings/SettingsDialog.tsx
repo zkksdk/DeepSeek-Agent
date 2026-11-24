@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode, useEffect } from 'react'
 import {
   IconDarkOutline16,
   IconDataOutline16,
@@ -18,6 +18,7 @@ import {
 import { useIsMobile } from '../../app/viewport.js'
 import { useChatStore } from '../../services/chat/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
+import { detectLocation } from '../../services/geo.js'
 import {
   isChineseBrowser,
   MAX_TEMPERATURE,
@@ -270,6 +271,22 @@ const LocationSetting = () => {
   const t = useTranslate()
   const locale = useSettings((state) => state.locale)
   const location = useSettings((state) => state.location)
+
+  // 没设过就按 IP 猜一次，省得让用户自己翻省市列表；设过了就不动，尊重用户的选择。
+  useEffect(() => {
+    if (location !== null) {
+      return
+    }
+    let cancelled = false
+    void detectLocation().then((result) => {
+      if (!cancelled && result) {
+        setLocation(result)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [location])
   const province =
     location?.region === 'CN'
       ? provinces.find((item) => item.code === location.province)

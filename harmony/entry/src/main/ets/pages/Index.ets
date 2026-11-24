@@ -1,5 +1,6 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit'
 import { webview } from '@kit.ArkWeb'
+import { geoLocationManager } from '@kit.LocationKit'
 import { fileIo as fs, picker } from '@kit.CoreFileKit'
 import { notificationManager } from '@kit.NotificationKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
@@ -172,6 +173,43 @@ class ShellBridge {
   /** 页面把 console/error 转给原生，方便在 hilog 里看 */
   log(message: string): void {
     hilog.info(DOMAIN, TAG, 'web: %{public}s', message.slice(0, 400))
+  }
+
+  /**
+   * 系统定位 + 系统逆地理编码。
+   *
+   * 用 HarmonyOS 自带的 LocationKit：先取当前位置，再让系统反查地址，
+   * 不需要接任何第三方地图服务。拿不到就返回空字符串，页面安静地忽略。
+   */
+  async locate(): Promise<string> {
+    try {
+      const position = await geoLocationManager.getCurrentLocation({
+        priority: geoLocationManager.LocationRequestPriority.FIRST_FIX,
+        scenario: geoLocationManager.LocationRequestScenario.UNSET,
+        timeoutMs: 8000,
+      })
+      const addresses = await geoLocationManager.getAddressesFromLocation({
+        latitude: position.latitude,
+        longitude: position.longitude,
+        locale: 'zh',
+        maxItems: 1,
+      })
+      const first: geoLocationManager.GeoAddress | null =
+        addresses.length > 0 ? addresses[0] : null
+      if (first === null) {
+        return ''
+      }
+      const payload: Record<string, string> = {
+        'region': first.countryCode ?? 'CN',
+        'province': first.administrativeArea ?? '',
+        'city': first.locality ?? first.subAdministrativeArea ?? ''
+      }
+      hilog.info(DOMAIN, TAG, 'locate: %{public}s', JSON.stringify(payload))
+      return JSON.stringify(payload)
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'locate failed: %{public}s', (error as Error).message)
+      return ''
+    }
   }
 
   /** 设置页点「账号登录」时调用 */
@@ -744,7 +782,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
