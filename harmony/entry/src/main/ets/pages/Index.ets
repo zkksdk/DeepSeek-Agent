@@ -233,6 +233,8 @@ struct Index {
    *  先给 36 兜底：aboutToAppear 阶段 getWindowAvoidArea 往往还没量出来，
    *  真要等它就等于让内容先压到状态栏下面去。 */
   @State private safeTop: number = 36
+  /** 底部导航条高度（vp）。同理，底部也要让开，否则最下面那行字会被压住裁掉 */
+  @State private safeBottom: number = 0
   @State private failure: string = ''
   /** 当前页面 hash，用来判断是否在设置页（SPA 路由不触发 onPageEnd） */
   @State private currentHash: string = ''
@@ -264,9 +266,14 @@ struct Index {
       window.getLastWindow(context).then((win) => {
         const avoid = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM)
         const top = px2vp(avoid.topRect.height)
-        hilog.info(DOMAIN, TAG, 'avoid top = %{public}d vp', top)
         if (top > 0) {
           this.safeTop = top + 8
+        }
+        const nav = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR)
+        const bottom = px2vp(nav.bottomRect.height)
+        hilog.info(DOMAIN, TAG, 'avoid top=%{public}d bottom=%{public}d vp', top, bottom)
+        if (bottom > 0) {
+          this.safeBottom = bottom
         }
       }).catch((error: Error) => {
         hilog.warn(DOMAIN, TAG, 'read avoid area failed: %{public}s', error.message)
@@ -776,6 +783,7 @@ struct Index {
     }
     .width('100%')
     .layoutWeight(1)
+      Blank().height(this.safeBottom)
     }
     .width('100%')
     .height('100%')
