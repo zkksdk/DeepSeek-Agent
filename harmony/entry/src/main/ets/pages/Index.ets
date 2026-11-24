@@ -55,6 +55,8 @@ const SERVICE_WORKER_PATHS: string[] = ['sw.js', 'service-worker.js']
 const OAUTH_REDIRECT: string = 'http://localhost:8080/oauth/callback'
 const OAUTH_INIT_URL: string = 'https://platform.deepseek.com/auth-api/v0/dsh/auth_init'
 const OAUTH_EXCHANGE_URL: string = 'https://platform.deepseek.com/auth-api/v0/dsh/auth_exchange'
+/** 登录中途应用被杀时，PKCE verifier 靠它活下来 */
+const OAUTH_VERIFIER_KEY: string = 'oauth:pending-verifier'
 
 /** 把未捕获异常和 console.error 转给原生，黑屏才有据可查 */
 const ERROR_WATCH: string =
@@ -318,31 +320,56 @@ struct Index {
 
   /** 用拿到的 code 换 token，写进 dsh: 通道，然后回到 Agent 首页 */
   private async exchangeCode(code: string): Promise<void> {
-    if (this.pendingVerifier.length === 0) {
-      hilog.error(DOMAIN, TAG, 'exchange skipped: no verifier')
-      return
+    try {
+      const verifier = await this.resolveVerifier()
+      if (verifier.length === 0) {
+        hilog.error(DOMAIN, TAG, 'exchange skipped: no verifier in memory or storage')
+        return
+      }
+      const body = JSON.stringify({
+        code: code,
+        code_verifier: verifier,
+        redirect_uri: OAUTH_REDIRECT,
+        device_id: this.pendingAuthorizeId,
+        'device_model': 'HUAWEI-HarmonyOS',
+        'os_version': 'HarmonyOS',
+      })
+      const raw = await this.postJson(OAUTH_EXCHANGE_URL, body)
+      hilog.info(DOMAIN, TAG, 'exchange response: %{public}s', raw.slice(0, 300))
+      const envelope = JSON.parse(raw) as PlatformEnvelope<OAuthExchangeBody>
+      if (envelope.code !== 0 || envelope.data === null) {
+        hilog.error(DOMAIN, TAG, 'exchange failed: code=%{public}d msg=%{public}s', envelope.code, envelope.msg)
+        return
+      }
+      const token = envelope.data.biz_data.token
+      const script = "localStorage.setItem('" + API_KEY_STORAGE + "', " + JSON.stringify('dsh:' + token) + ")" +
+        "; localStorage.removeItem('" + OAUTH_VERIFIER_KEY + "')"
+      await this.controller.runJavaScript(script)
+      hilog.info(DOMAIN, TAG, 'account token stored, reloading')
+      this.pendingVerifier = ''
+    } finally {
+      // 不管换 token 成没成，都要离开回调页。否则页面停在 localhost 那屏，
+      // 用户以为卡死，只能杀应用（而一杀，PKCE verifier 就没了）。
+      this.controller.loadUrl(HOME_URL)
     }
-    const body = JSON.stringify({
-      code: code,
-      code_verifier: this.pendingVerifier,
-      redirect_uri: OAUTH_REDIRECT,
-      device_id: this.pendingAuthorizeId,
-      'device_model': 'HUAWEI-HarmonyOS',
-      'os_version': 'HarmonyOS',
-    })
-    const raw = await this.postJson(OAUTH_EXCHANGE_URL, body)
-    hilog.info(DOMAIN, TAG, 'exchange response: %{public}s', raw.slice(0, 300))
-    const envelope = JSON.parse(raw) as PlatformEnvelope<OAuthExchangeBody>
-    if (envelope.code !== 0 || envelope.data === null) {
-      hilog.error(DOMAIN, TAG, 'exchange failed: code=%{public}d msg=%{public}s', envelope.code, envelope.msg)
-      return
+  }
+
+  /** 取 PKCE verifier：先看内存，再看上次登录时落盘的那份 */
+  private async resolveVerifier(): Promise<string> {
+    if (this.pendingVerifier.length > 0) {
+      return this.pendingVerifier
     }
-    const token = envelope.data.biz_data.token
-    const script = "localStorage.setItem('" + API_KEY_STORAGE + "', " + JSON.stringify('dsh:' + token) + ")"
-    await this.controller.runJavaScript(script)
-    hilog.info(DOMAIN, TAG, 'account token stored, reloading')
-    this.pendingVerifier = ''
-    this.controller.loadUrl(HOME_URL)
+    try {
+      const saved = await this.controller.runJavaScript(
+        "localStorage.getItem('" + OAUTH_VERIFIER_KEY + "') || ''")
+      if (typeof saved === 'string') {
+        return saved
+      }
+      return ''
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'read saved verifier failed: %{public}s', (error as Error).message)
+      return ''
+    }
   }
 
   /**
@@ -381,6 +408,13 @@ struct Index {
       return
     }
     this.pendingAuthorizeId = envelope.data.biz_data.authorize_id
+    // 落盘一份：授权页里用户可能退回、杀掉应用，回来时内存里那份已经没了
+    try {
+      await this.controller.runJavaScript(
+        "localStorage.setItem('" + OAUTH_VERIFIER_KEY + "', " + JSON.stringify(verifier) + ")")
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'persist verifier failed: %{public}s', (error as Error).message)
+    }
     this.controller.loadUrl(envelope.data.biz_data.authorize_url)
   }
 

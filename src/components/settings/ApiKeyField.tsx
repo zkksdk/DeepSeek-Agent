@@ -118,7 +118,9 @@ export const AccountField = () => {
   const t = useTranslate()
   const apiKey = useSettings((state) => state.apiKey)
   const shell = typeof window === 'undefined' ? undefined : (window as ShellWindow).__DS_SHELL__
-  const signedIn = apiKey.startsWith('dsh:')
+  // apiKey 的类型是 string | null，未设置时就是 null —— 直接 .startsWith 会抛
+  // TypeError 把整棵 React 树带走（真机上表现为整屏黑）。
+  const signedIn = (apiKey ?? '').startsWith('dsh:')
 
   return (
     <div className={styles.cell}>

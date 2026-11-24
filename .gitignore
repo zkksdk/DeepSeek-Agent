@@ -29,3 +29,10 @@ dist-ext/*
 /.refact/
 
 .out/
+
+# DevEco Studio 打开工程时生成的 IDE 状态与静态检查缓存，不进仓库
+harmony/.idea/
+harmony/.appanalyzer/
+harmony/.hvigor/
+harmony/oh_modules/
+harmony/**/build/
