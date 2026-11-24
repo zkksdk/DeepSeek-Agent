@@ -458,6 +458,35 @@ const fetchPageTool = defineTool(
       }
     }
 
+    // 鸿蒙壳：原生 http 请求不受 CORS 约束，优先走它
+    const shell = (window as unknown as {
+      __DS_SHELL__?: { fetchUrl?: (url: string) => Promise<string> }
+    }).__DS_SHELL__
+    if (shell?.fetchUrl) {
+      context.progress('通过系统网络抓取…')
+      try {
+        const raw = await shell.fetchUrl(parsed.href)
+        const payload = JSON.parse(raw) as { ok?: boolean; status?: number; html?: string; error?: string }
+        if (payload.ok && typeof payload.html === 'string') {
+          const html = payload.html
+          const { title, text } = html.trimStart().startsWith('<')
+            ? extractReadable(html, parsed.href)
+            : { title: parsed.href, text: html }
+          return ok(
+            [`标题：${title}`, `链接：${parsed.href}`, '', clip(text, max)].join('\n'),
+            { meta: { title, url: parsed.href, length: text.length } }
+          )
+        }
+        if (payload.error) {
+          return fail(`请求失败：${payload.error}`)
+        }
+        return fail(`请求失败：HTTP ${payload.status ?? 0}`)
+      } catch (error) {
+        // 壳这边出问题就继续走页面 fetch，别把整条路堵死
+        context.progress('系统请求失败，改用页面请求…')
+      }
+    }
+
     context.progress('正在请求…')
     try {
       const response = await fetch(parsed.href, {
@@ -716,7 +745,74 @@ const previewFileTool = defineTool(
   'browser'
 )
 
+/**
+ * 操控内嵌浏览器。
+ *
+ * fetch_webpage 拿的是服务端原始 HTML，读不到 JS 渲染出来的内容，也不能点击。
+ * 这个工具用壳里那个隐藏的 WebView：真正加载页面、跑脚本、读 DOM，
+ * 所以能点按钮、填表单、等异步加载完再取文本。
+ */
+const browseTool = defineTool(
+  {
+    name: 'browse_web',
+    label: '操控浏览器',
+    description:
+      '在设备内置浏览器里打开网页并执行 JavaScript，返回脚本结果。适合需要 JS 渲染、点击、填表单或读取动态内容的页面。script 缺省时返回页面标题和正文文本。',
+    inputSchema: objectSchema(
+      {
+        url: { type: 'string', description: '完整 URL，需包含 http(s) 协议' },
+        script: {
+          type: 'string',
+          description:
+            "要执行的 JS 表达式字符串。可用 document/querySelector/click 等。示例：'document.title' 或 \"document.querySelector('h1').innerText\"",
+        },
+        wait_ms: {
+          type: 'number',
+          description: '页面加载完后再等多少毫秒（默认 1200），给异步渲染留时间',
+        },
+      },
+      ['url']
+    ),
+    risk: 'network',
+  },
+  async (input, context) => {
+    const url = str(input, 'url')
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return fail('只支持 http/https 链接')
+      }
+    } catch {
+      return fail(`无效的 URL：${url}`)
+    }
+    if (!isPublicWebUrl(parsed.href)) {
+      return fail('出于安全考虑，不打开本机、内网或带账号密码的地址')
+    }
+    const shell = (window as unknown as {
+      __DS_SHELL__?: { browse?: (url: string, script: string) => Promise<string> }
+    }).__DS_SHELL__
+    if (!shell?.browse) {
+      return fail('这台设备没有内置浏览器，请改用 fetch_webpage')
+    }
+    const script =
+      str(input, 'script').trim() ||
+      "JSON.stringify({ title: document.title, text: (document.body?.innerText || '').slice(0, 12000) })"
+    context.progress('正在打开页面…')
+    try {
+      const raw = await shell.browse(parsed.href, script)
+      if (!raw) {
+        return fail('浏览器没有返回结果')
+      }
+      return ok(raw.slice(0, 20000), { meta: { url: parsed.href } })
+    } catch (error) {
+      return fail(`浏览器执行失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+)
+
 export const browserTools: RegisteredTool[] = [
+  browseTool,
   timeTool,
   locationTool,
   weatherTool,

@@ -2,6 +2,8 @@ import type { zh } from './zh.js'
 
 export const en = {
   sessionModeToggle: 'Toggle session mode',
+  browserChipExpand: 'Expand',
+  browserChipOpen: 'Expand built-in browser',
   modeChat: 'Chat',
   modeWork: 'Work',
   welcomeMessageChat250808: 'How can I help you?',

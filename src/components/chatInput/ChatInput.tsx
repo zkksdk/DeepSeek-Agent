@@ -7,6 +7,7 @@ import {
   IconStopFill16,
 } from '../base/icons.js'
 import { setSearch, useSettings } from '../../services/settings.js'
+import { BrowserChip } from './BrowserChip.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { sendMessage, stopReply, useChatStore } from '../../services/chat/store.js'
 import {
@@ -182,6 +183,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         }
       }}
     >
+      <BrowserChip />
       <ApprovalPanel sessionId={sessionId} />
       <AskUserPanel sessionId={sessionId} />
       <DraftAttachments items={attachments} onRetry={retryFile} onRemove={removeFile} />

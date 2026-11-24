@@ -178,8 +178,84 @@ class ShellBridge {
   }
 
   /** 页面把 console/error 转给原生，方便在 hilog 里看 */
+  /** 页面上的胶囊点了「展开」，把窗口叫回来 */
+  async openBrowser(): Promise<void> {
+    if (this.lastBrowserUrl !== '') {
+      this.onBrowserShow?.(this.lastBrowserUrl)
+    }
+  }
+
   log(message: string): void {
     hilog.info(DOMAIN, TAG, 'web: %{public}s', message.slice(0, 400))
+  }
+
+  /** 由 Index 注入：隐藏浏览器的 controller */
+  browseController: webview.WebviewController | null = null
+  /** 最近一次打开的地址，页面点「展开」时用它 */
+  private lastBrowserUrl: string = ''
+
+  /**
+   * 在内嵌浏览器里打开页面并执行脚本。
+   *
+   * 抓 HTML 用 fetchUrl 就够，但很多页面要靠 JS 才出内容、才有交互。
+   * 这里用一个隐藏的 Web 组件（用户看不见），加载完再跑脚本，
+   * 脚本里可以 click、填表单、读 DOM。
+   */
+  /** 由 Index 注入：让页面弹出/收起浏览器小窗 */
+  onBrowserShow: ((url: string) => void) | undefined = undefined
+  /** 由 Index 注入：把浏览器状态推给页面，让 web 自己画胶囊 */
+  notifyBrowserState: ((visible: boolean, url: string) => void) | undefined = undefined
+  /** 由 Index 注入：当前是不是用户接管中 */
+  isUserTakeover: (() => boolean) | undefined = undefined
+  /** 由 Index 注入：Agent 在等用户交还时通知界面 */
+  onWaitUser: ((waiting: boolean) => void) | undefined = undefined
+
+  async browse(url: string, script: string): Promise<string> {
+    const controller = this.browseController
+    if (controller === null) {
+      return JSON.stringify({ ok: false, error: 'browser not ready' })
+    }
+    // 用户接管期间不抢操作，等着。
+    // 等 25 秒就收手——再久的话上层会把整个调用转后台，用户反而看不到反馈。
+    const takeover = this.isUserTakeover
+    if (takeover !== undefined && takeover()) {
+      this.onWaitUser?.(true)
+      const limit = Date.now() + 25000
+      while (takeover()) {
+        if (Date.now() > limit) {
+          this.onWaitUser?.(false)
+          hilog.info(DOMAIN, TAG, 'browse gave up: user still operating')
+          return JSON.stringify({
+            ok: false,
+            error: '用户正在操作浏览器，等了 25 秒还没交还。可以稍后再试，或者直接问用户。'
+          })
+        }
+        await new Promise<void>((resolve) => setTimeout(() => resolve(), 300))
+      }
+      this.onWaitUser?.(false)
+    }
+    try {
+      this.lastBrowserUrl = url
+      this.onBrowserShow?.(url)
+      this.notifyBrowserState?.(true, url)
+      controller.loadUrl(url)
+      const deadline = Date.now() + 12000
+      for (;;) {
+        await new Promise<void>((resolve) => setTimeout(() => resolve(), 400))
+        if (controller.getProgress() >= 100 || Date.now() > deadline) {
+          break
+        }
+      }
+      // 再等一会儿，让首屏脚本渲染完
+      await new Promise<void>((resolve) => setTimeout(() => resolve(), 1200))
+      const result = await controller.runJavaScript(script)
+      const text: string = typeof result === 'string' ? result : JSON.stringify(result)
+      hilog.info(DOMAIN, TAG, 'browse done, %{public}d chars', text.length)
+      return text
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'browse failed: %{public}s', (error as Error).message)
+      return JSON.stringify({ ok: false, error: (error as Error).message })
+    }
   }
 
   /**
@@ -256,6 +332,49 @@ class ShellBridge {
     } catch (error) {
       hilog.warn(DOMAIN, TAG, 'pickFolder failed: %{public}s', (error as Error).message)
       return ''
+    }
+  }
+
+  /**
+   * 抓一个网页的 HTML。
+   *
+   * 走系统的 http 模块，不受浏览器 CORS 约束——页面里 fetch 跨域会被拦，
+   * 原生请求不会。拿回来的是服务端原始 HTML，不含 JS 渲染后的内容；
+   * 需要渲染的页面得靠隐藏的 Web 组件，那是下一步。
+   */
+  async fetchUrl(url: string): Promise<string> {
+    const request = http.createHttp()
+    try {
+      const response = await request.request(url, {
+        method: http.RequestMethod.GET,
+        header: {
+          // 不少站点对空 UA 直接返回 403
+          'User-Agent': 'Mozilla/5.0 (Linux; HarmonyOS) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        },
+        connectTimeout: 15000,
+        readTimeout: 20000,
+        expectDataType: http.HttpDataType.STRING,
+      })
+      const body: string = typeof response.result === 'string' ? response.result : ''
+      const payload: Record<string, Object> = {
+        'ok': response.responseCode >= 200 && response.responseCode < 300,
+        'status': response.responseCode,
+        'html': body.slice(0, 400000)
+      }
+      hilog.info(DOMAIN, TAG, 'fetchUrl %{public}d %{public}d chars', response.responseCode, body.length)
+      return JSON.stringify(payload)
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'fetchUrl failed: %{public}s', (error as Error).message)
+      const failed: Record<string, Object> = {
+        'ok': false,
+        'status': 0,
+        'error': (error as Error).message
+      }
+      return JSON.stringify(failed)
+    } finally {
+      request.destroy()
     }
   }
 
@@ -350,6 +469,21 @@ struct Index {
   private abilityContext: common.UIAbilityContext | undefined = undefined
   /** 注入给页面的原生桥，见 ShellBridge */
   private bridge: ShellBridge | undefined = undefined
+  /** 隐藏的浏览器：给 Agent 用，跑 JS、点按钮、读内容，不影响用户看到的界面 */
+  private browseController: webview.WebviewController = new webview.WebviewController()
+  /** 当前内嵌浏览器是否就绪 */
+  private browseReady: boolean = false
+  /** Agent 用浏览器时弹出的小窗是否打开 */
+  @State private showBrowser: boolean = false
+  /** 小窗里当前显示的地址 */
+  @State private browserUrl: string = ''
+  /** 用户接管后暂停 Agent 的脚本注入 */
+  @State private userTakeover: boolean = false
+  /** 已经用过一次浏览器（收起后要留个入口能再打开） */
+  @State private browserOpened: boolean = false
+  /** Agent 正等着用户交还浏览器 */
+  @State private browserWaiting: boolean = false
+
   @State private assetsReady: boolean = false
   /** 状态栏高度（vp）。全屏后窗口铺到状态栏后面，内容靠这个内边距避让。
    *  先给 36 兜底：aboutToAppear 阶段 getWindowAvoidArea 往往还没量出来，
@@ -375,6 +509,18 @@ struct Index {
   private pendingToken: string = ''
   private pendingAuthorizeId: string = ''
 
+  /** 把浏览器状态推给页面；页面据此决定要不要在输入框上方画胶囊 */
+  private notifyBrowserStateToPage(visible: boolean, url: string): void {
+    this.controller
+      .runJavaScript(
+        'window.__DS_BROWSER_STATE__ && window.__DS_BROWSER_STATE__(' +
+          JSON.stringify(visible) + ',' + JSON.stringify(url) + ')'
+      )
+      .catch(() => {
+        // 页面还没起来就算了，不值得为这个报错
+      })
+  }
+
   aboutToAppear(): void {
     // 远程调试开关。需要连 DevTools 查 console / storage 时打开，配合
     // `hdc fport tcp:9222 tcp:9222`；正式包必须关掉。
@@ -384,6 +530,27 @@ struct Index {
     this.bridge = new ShellBridge(context)
     this.bridge.onHashChange = (hash: string) => {
       this.currentHash = hash
+    }
+    this.bridge.browseController = this.browseController
+    // Agent 调浏览器时把窗口打开，用户能看到它在做什么
+    this.bridge.onBrowserShow = (url: string) => {
+      this.browserUrl = url
+      this.userTakeover = false
+      this.browserOpened = true
+      this.showBrowser = true
+    }
+    // 接管期间 Agent 的脚本注入要让路，这里把状态喂给桥
+    this.bridge.notifyBrowserState = (visible: boolean, url: string) => {
+      // 让页面自己画胶囊：它跟着输入框排版，天然自适应任何屏幕
+      this.notifyBrowserStateToPage(visible, url)
+    }
+    this.bridge.isUserTakeover = () => this.userTakeover
+    this.bridge.onWaitUser = (waiting: boolean) => {
+      this.browserWaiting = waiting
+      // 它在等你的时候，窗口得让人看见，不然等了个寂寞
+      if (waiting && this.browserUrl !== '') {
+        this.showBrowser = true
+      }
     }
     this.bridge.onLogin = () => {
       this.startAccountLogin()
@@ -866,7 +1033,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
@@ -982,6 +1149,109 @@ this.controller
         .justifyContent(FlexAlign.Center)
         .padding(24)
       }
+      // Agent 的浏览器：默认收起，用它抓页面时弹出小窗，用户能看着也能接手
+      // 注意：这里不能用 if 包住 Web 组件。
+      // 条件渲染会销毁组件，WebviewController 失去绑定的 Web 后，
+      // 下次调用就报 "must be associated with a Web component"。
+      // 所以让它常驻，只切 visibility。
+      Column() {
+          Row() {
+            Text(this.browserUrl)
+              .fontSize(11)
+              .fontColor('#888888')
+              .layoutWeight(1)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            Text(
+              this.browserWaiting
+                ? '等你交还…'
+                : this.userTakeover
+                  ? '你正在操作'
+                  : 'Agent 操作中'
+            )
+              .fontSize(11)
+              .fontColor(
+                this.browserWaiting
+                  ? '#fbbf24'
+                  : this.userTakeover
+                    ? '#4ade80'
+                    : '#888888'
+              )
+              .margin({ left: 8 })
+            // 显式按钮接管：页面上的触摸不算，避免滚动查看时误判
+            Button(this.userTakeover ? '交还给 Agent' : '我来操作')
+              .fontSize(12)
+              .height(28)
+              .backgroundColor(this.userTakeover ? '#2f5d3f' : '#2a2a2a')
+              .fontColor('#cccccc')
+              .margin({ left: 8 })
+              .onClick(() => {
+                this.userTakeover = !this.userTakeover
+              })
+            Button('收起')
+              .fontSize(12)
+              .height(28)
+              .backgroundColor('#2a2a2a')
+              .fontColor('#cccccc')
+              .margin({ left: 6 })
+              .onClick(() => {
+                this.showBrowser = false
+                this.notifyBrowserStateToPage(false, this.browserUrl)
+              })
+          }
+          .width('100%')
+          .padding({ left: 14, right: 10, top: 8, bottom: 8 })
+
+          Web({ src: this.browserUrl, controller: this.browseController })
+            .width('100%')
+            .layoutWeight(1)
+            .javaScriptAccess(true)
+            .domStorageAccess(true)
+            .mixedMode(MixedMode.All)
+            // 页面始终可交互：用户随时能滚、能点。接管只由上面那个按钮显式切换，
+            // 之前用 onTouch 判定，滚动看一眼就被当成接管，太容易误触。
+        }
+        .width('92%')
+        .height('62%')
+        .margin({ top: 80 })
+        .backgroundColor('#1c1c1e')
+        .borderRadius(14)
+        .border({ width: 1, color: '#333333' })
+        .shadow({ radius: 24, color: '#00000088', offsetY: 8 })
+        .visibility(this.showBrowser ? Visibility.Visible : Visibility.None)
+
+      // 收起之后留一个悬浮胶囊，不然窗口一关就再也找不回来了。
+      // 不能用 if 包着——被 if 包住的子组件吃不到 Stack 的对齐，会掉回中间。
+      Row() {
+          Text('🌐')
+            .fontSize(13)
+          Text(this.browserUrl)
+            .fontSize(11)
+            .fontColor('#cccccc')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+            .margin({ left: 6 })
+          Text('展开')
+            .fontSize(11)
+            .fontColor('#6ea8fe')
+            .margin({ left: 8 })
+        }
+        .width('88%')
+        .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+        // 绝对定位钉在输入框上方。用 align+margin 试过两轮都不动，
+        // Stack 的 alignContent 是 Top，子组件跟着走，只能写死位置。
+        .position({ x: '6%', y: 2130 })
+        .backgroundColor('#2a2a2c')
+        .borderRadius(999)
+        .border({ width: 1, color: '#3a3a3c' })
+        .shadow({ radius: 12, color: '#00000066', offsetY: 4 })
+        .onClick(() => {
+          this.showBrowser = true
+        })
+        .visibility(
+          !this.showBrowser && this.browserOpened ? Visibility.Visible : Visibility.None
+        )
     }
     .width('100%')
     .layoutWeight(1)
