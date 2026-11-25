@@ -29,11 +29,15 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const sessions = useChatStore((state) => state.sessions)
   const activeId = useChatStore((state) => state.activeId)
   const [now, setNow] = useState(Date.now)
-  const groups = useMemo(() => groupSessions(sessions, now, t), [sessions, now, t])
+  // 聊天会话只放没有归属工作区的会话——否则和工作区 tab 内容一模一样
+  const chatOnly = useMemo(() => sessions.filter((item) => !item.workspaceId), [sessions])
+  const groups = useMemo(() => groupSessions(chatOnly, now, t), [chatOnly, now, t])
   const entries = useWorkspace((state) => state.entries)
+  // 只归有工作区的会话；没归属的留给「聊天会话」那个 tab，两边不重叠
+  const assigned = useMemo(() => sessions.filter((item) => item.workspaceId), [sessions])
   const workspaceGroups = useMemo(
-    () => groupSessionsByWorkspace(sessions, entries, t('workspaceUngrouped')),
-    [sessions, entries, t]
+    () => groupSessionsByWorkspace(assigned, entries, t('workspaceUngrouped')),
+    [assigned, entries, t]
   )
   // 侧栏顶部两个 tab：工作区（按目录归类）/ 聊天会话（按时间）
   const [tab, setTab] = useState<'workspace' | 'chats'>('workspace')
@@ -149,6 +153,8 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
                 ))
               )}
             </div>
+          ) : groups.length === 0 ? (
+            <div className={styles.sectionHeader}>{t('workspaceNoUngroupedChats')}</div>
           ) : (
             groups.map((group) => (
               <div key={group.key} className={styles.section}>

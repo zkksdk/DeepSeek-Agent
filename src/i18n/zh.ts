@@ -548,6 +548,7 @@ export const zh = {
   workspaceSectionTitle: '工作区',
   workspaceChatSectionTitle: '聊天会话',
   workspaceNoGroups: '还没有工作区',
+  workspaceNoUngroupedChats: '没有独立的聊天会话',
   workspacePickerDemo: '示例仓库',
   workspacePickerManage: '管理工作区',
   settingsWorkspaceHint: '切换分支请用工作区面板或输入框左下角的选择器',

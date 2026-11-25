@@ -557,6 +557,7 @@ export const en = {
   workspaceSectionTitle: 'Workspaces',
   workspaceChatSectionTitle: 'Chats',
   workspaceNoGroups: 'No workspaces yet',
+  workspaceNoUngroupedChats: 'No standalone chats',
   workspacePickerDemo: 'Demo repo',
   workspacePickerManage: 'Manage workspaces',
   settingsWorkspaceHint: 'Switch branches from the workspace panel or the picker at the bottom left of the input',
