@@ -32,6 +32,10 @@ type ShellPicker = {
   sandboxInfo?: () => Promise<string>
   /** 清空沙箱工作树 */
   clearSandbox?: () => Promise<string>
+  /** 列沙箱目录 */
+  listSandboxDir?: (relPath: string) => Promise<string>
+  /** 读沙箱文件内容 */
+  readSandboxFile?: (relPath: string) => Promise<string>
 }
 
 const shellBridge = () => (window as unknown as { __DS_SHELL__?: ShellPicker }).__DS_SHELL__
@@ -192,6 +196,38 @@ export const replaceSandboxTree = async (files: Record<string, string>): Promise
 export type SandboxInfo = { ok: boolean; path?: string; count?: number; bytes?: number; error?: string }
 
 /** 读沙箱现状 */
+export type SandboxEntry = { name: string; dir: boolean; size: number; mtime: number }
+export type SandboxListing = { ok: boolean; path?: string; items?: SandboxEntry[]; error?: string }
+
+/** 列沙箱某个目录 */
+export const listSandboxDir = async (relPath: string): Promise<SandboxListing> => {
+  const shell = shellBridge()
+  if (!shell?.listSandboxDir) return { ok: false, error: 'unsupported' }
+  try {
+    return JSON.parse((await shell.listSandboxDir(relPath)) ?? '{}') as SandboxListing
+  } catch {
+    return { ok: false, error: 'parse' }
+  }
+}
+
+/** 读沙箱文件内容 */
+export const readSandboxFile = async (relPath: string) => {
+  const shell = shellBridge()
+  if (!shell?.readSandboxFile) return { ok: false as const, error: 'unsupported' as string }
+  try {
+    const parsed = JSON.parse((await shell.readSandboxFile(relPath)) ?? '{}') as {
+      ok?: boolean
+      content?: string
+      size?: number
+      error?: string
+    }
+    if (!parsed.ok) return { ok: false as const, error: parsed.error ?? 'failed' }
+    return { ok: true as const, content: parsed.content ?? '', size: parsed.size ?? 0 }
+  } catch {
+    return { ok: false as const, error: 'parse' }
+  }
+}
+
 export const getSandboxInfo = async (): Promise<SandboxInfo> => {
   const shell = shellBridge()
   if (!shell?.sandboxInfo) return { ok: false, error: 'unsupported' }

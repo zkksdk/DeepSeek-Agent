@@ -670,7 +670,7 @@
   }
 
   .sidebar {
-    flex: 0 0 38%;
+    flex: 0 0 55%;
     border-right: 0;
     border-bottom: 1px solid var(--dsw-alias-border-l1);
   }
@@ -678,4 +678,47 @@
   .mainArea {
     flex: 1;
   }
+}
+
+
+/* 未改动文件的内容预览 */
+.plainView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.plainHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  word-break: break-all;
+}
+
+.plainBadge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  background-color: var(--dsw-alias-bg-l2);
+}
+
+.plainPre {
+  flex: 1;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  font-family: var(--ds-font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--dsw-alias-label-primary);
 }

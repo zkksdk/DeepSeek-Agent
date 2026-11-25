@@ -22,7 +22,7 @@ import {
   useWorkspace,
 } from '../../services/workspace/store.js'
 import { DiffViewer } from './DiffViewer.js'
-import { buildFileTree, type FileNode } from './fileTree.js'
+import { buildFullFileTree, type FileNode } from './fileTree.js'
 import {
   closeWorkspacePanel,
   consumeWorkspaceFocus,
@@ -143,7 +143,7 @@ export const WorkspacePanel = () => {
     [stats]
   )
   const totals = useMemo(() => totalChanges(changes), [changes])
-  const tree = useMemo(() => buildFileTree(changes), [changes])
+  const tree = useMemo(() => buildFullFileTree(files, stats), [files, stats])
   const diff = useMemo(
     () => (selected ? diffFile(selected, base, files) : null),
     [selected, base, files]
@@ -215,7 +215,7 @@ export const WorkspacePanel = () => {
           <span className={styles.add}>+{totals.additions}</span>
           <span className={styles.del}>−{totals.deletions}</span>
         </span>
-        <span className={styles.count}>{t('workspaceChangedFiles', { count: changes.length })}</span>
+        <span className={styles.count}>{t('workspaceChangeCount', { count: changes.length })}</span>
         {source === 'local' ? (
           <IconButton
             size="xs"
@@ -262,8 +262,8 @@ export const WorkspacePanel = () => {
       <div className={styles.body}>
         <aside className={styles.sidebar}>
           <div className={styles.sidebarHead}>
-            <span>{t('workspaceChanges')}</span>
-            <span className={styles.sidebarCount}>{changes.length}</span>
+            <span>{t('workspaceFiles')}</span>
+            <span className={styles.sidebarCount}>{Object.keys(files).length}</span>
           </div>
           <div className={styles.tree}>
             {tree.length === 0 ? (
@@ -302,7 +302,7 @@ export const WorkspacePanel = () => {
           ) : null}
           {truncated ? <div className={styles.notice}>{t('workspaceTruncated')}</div> : null}
           <div className={styles.sidebarFoot}>
-            <span>{t('workspaceFileCount', { count: Object.keys(files).length })}</span>
+            <span>{t('workspaceChangeCount', { count: changes.length })}</span>
             <span className={styles.sourceTag} data-source={source}>
               {t('workspaceSandboxTag')}
             </span>
@@ -321,6 +321,14 @@ export const WorkspacePanel = () => {
                 )
               }}
             />
+          ) : selected && files[selected] !== undefined ? (
+            <div className={styles.plainView}>
+              <div className={styles.plainHead}>
+                <span>{selected}</span>
+                <span className={styles.plainBadge}>{t('workspaceUnchanged')}</span>
+              </div>
+              <pre className={styles.plainPre}>{files[selected]}</pre>
+            </div>
           ) : (
             <div className={styles.empty}>
               <div className={styles.emptyArt} aria-hidden="true">

@@ -750,6 +750,105 @@ class ShellBridge {
     }
   }
 
+  /**
+   * 列沙箱某个目录下的条目。
+   *
+   * relPath 是相对工作树根的路径，'' 表示根。只允许在沙箱工作树内导航，
+   * 出现 .. 一律拒绝，防止越界读到沙箱其它地方。
+   */
+  listSandboxDir(relPath: string): string {
+    try {
+      const root: string = this.sandboxFilesDir()
+      let target: string = root
+      const trimmed: string = relPath.trim()
+      if (trimmed.length > 0) {
+        const segments: string[] = trimmed.split('/')
+        for (const segment of segments) {
+          if (segment.length === 0 || segment === '.' || segment === '..') {
+            const bad: ShellWriteResult = { ok: false, error: 'bad-path' }
+            return JSON.stringify(bad)
+          }
+          target = target + '/' + segment
+        }
+      }
+      if (!fs.accessSync(target)) {
+        const missing: ShellWriteResult = { ok: false, error: 'not-found' }
+        return JSON.stringify(missing)
+      }
+      const names: string[] = fs.listFileSync(target)
+      const items: Array<Record<string, Object>> = []
+      for (const name of names) {
+        const full: string = target + '/' + name
+        let isDir: boolean = false
+        let size: number = 0
+        let mtime: number = 0
+        try {
+          const stat = fs.statSync(full)
+          isDir = stat.isDirectory()
+          size = stat.size
+          mtime = stat.mtime * 1000
+        } catch {
+          continue
+        }
+        const item: Record<string, Object> = {
+          'name': name,
+          'dir': isDir,
+          'size': size,
+          'mtime': mtime
+        }
+        items.push(item)
+      }
+      const payload: Record<string, Object> = {
+        'ok': true,
+        'path': trimmed,
+        'items': items
+      }
+      return JSON.stringify(payload)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /**
+   * 读沙箱里某个文件的开头内容（预览用）。
+   *
+   * 只读前 64KB，二进制直接判失败——文件管理器不需要把图片塞进对话框。
+   */
+  readSandboxFile(relPath: string): string {
+    try {
+      const root: string = this.sandboxFilesDir()
+      const segments: string[] = relPath.trim().split('/')
+      let target: string = root
+      for (const segment of segments) {
+        if (segment.length === 0 || segment === '.' || segment === '..') {
+          const bad: ShellWriteResult = { ok: false, error: 'bad-path' }
+          return JSON.stringify(bad)
+        }
+        target = target + '/' + segment
+      }
+      const stat = fs.statSync(target)
+      if (stat.isDirectory()) {
+        const isDir: ShellWriteResult = { ok: false, error: 'is-directory' }
+        return JSON.stringify(isDir)
+      }
+      if (stat.size > 64 * 1024) {
+        const big: ShellWriteResult = { ok: false, error: 'too-large' }
+        return JSON.stringify(big)
+      }
+      const content: string = fs.readTextSync(target)
+      const payload: Record<string, Object> = {
+        'ok': true,
+        'content': content,
+        'size': stat.size
+      }
+      return JSON.stringify(payload)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
   /** 清空沙箱工作树（保留目录结构） */
   clearSandbox(): string {
     try {
@@ -1778,7 +1877,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree', 'sandboxInfo', 'clearSandbox'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree', 'sandboxInfo', 'clearSandbox', 'listSandboxDir', 'readSandboxFile'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
