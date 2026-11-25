@@ -13,6 +13,13 @@ import {
   canTransferViaShell,
   exportViaShell,
   importViaShell,
+  canUseSandboxWorkspace,
+  deleteSandboxFile,
+  readSandboxState,
+  readSandboxTree,
+  replaceSandboxTree,
+  writeSandboxFile,
+  writeSandboxState,
 } from './local.js'
 import type { WorkspaceSnapshot, WorkspaceSource } from './types.js'
 
@@ -245,6 +252,27 @@ const dropShellSnapshot = (id: string) => {
   }
 }
 
+/**
+ * 把「当前分支 + 各分支基线」写进沙箱 state.json。
+ *
+ * 工作树本身是 files/ 里的真文件，这里只存基线和分支信息——
+ * 两者凑起来才能算 diff，也才能切分支。
+ */
+const syncSandboxState = async () => {
+  if (!canUseSandboxWorkspace()) {
+    return
+  }
+  try {
+    const data: Record<string, { head: Record<string, string>; worktree: Record<string, string> }> = {}
+    for (const [name, branch] of Object.entries(demo.branchData)) {
+      data[name] = { head: branch.head, worktree: branch.worktree }
+    }
+    await writeSandboxState(JSON.stringify({ branch: demo.branch, branchData: data }))
+  } catch {
+    // 沙箱写失败不影响内存态
+  }
+}
+
 const persistList = () => {
   const state = useWorkspace.getState()
   try {
@@ -300,9 +328,71 @@ export const initWorkspace = () => {
   // 强行恢复只会让面板停在一个用不了的目录上。现在只保留应用内工作区，
   // 用户要带数据进来就走进口（zip 导入）。
   void restoreLocalWorkspaces
+  void restoreSandboxWorkspace()
 }
 
 /** 从 IndexedDB 取回句柄；没有读写权限时保留占位，点开时再申请 */
+/**
+ * 启动时从沙箱恢复工作区。
+ *
+ * 沙箱里有两样东西：state.json（分支与基线）和 files/（真工作树）。
+ * 两者都在就直接接管；都不在说明是首次启动，灌默认演示数据。
+ */
+const restoreSandboxWorkspace = async () => {
+  // 桥接是 Web 组件创建时才注入的，启动那一刻 __DS_SHELL__ 往往还没挂上。
+  // 直接判 canUseSandboxWorkspace() 会永远是 false，得轮询等它就绪。
+  let ready = canUseSandboxWorkspace()
+  for (let i = 0; i < 40 && !ready; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    ready = canUseSandboxWorkspace()
+  }
+  if (!ready) {
+    return
+  }
+  try {
+    const stateRaw = await readSandboxState()
+    const tree = await readSandboxTree()
+    if (!tree.ok || !tree.files) {
+      return
+    }
+    const fileCount = Object.keys(tree.files).length
+    const parsed = JSON.parse(stateRaw) as {
+      branch?: string
+      branchData?: Record<string, { head: Record<string, string>; worktree: Record<string, string> }>
+    }
+    if (fileCount === 0 || !parsed.branchData) {
+      // 沙箱是空的：把默认演示仓库灌进去，之后一切以磁盘为准
+      await seedSandbox()
+      return
+    }
+    // 沙箱有货：用它覆盖内存里的演示数据
+    demo = {
+      branch: parsed.branch ?? demo.branch,
+      branchData: parsed.branchData,
+    }
+    const fresh = demoEntry()
+    useWorkspace.setState((current) => ({
+      entries: [fresh, ...current.entries.filter((item) => item.id !== DEMO_ID)],
+      activeId: DEMO_ID,
+      ...mirror(fresh),
+      error: fileCount === 0 ? 'empty' : null,
+    }))
+  } catch {
+    // 沙箱异常就维持内存态
+  }
+}
+
+/** 首次启动：把默认演示仓库写进沙箱 */
+const seedSandbox = async () => {
+  try {
+    const fresh = demoEntry()
+    await replaceSandboxTree(fresh.files)
+    await syncSandboxState()
+  } catch {
+    // 写不进去就只跑内存态
+  }
+}
+
 const restoreLocalWorkspaces = async () => {
   const saved = readSavedList()
   const snapshots = readShellSnapshots()
@@ -378,6 +468,11 @@ export const setBranch = (name: string) => {
     base: clone(data.head),
   }))
   useWorkspace.setState({ error: null })
+  // 切分支要换一整套工作树，沙箱里的 files/ 也得跟着换
+  if (canUseSandboxWorkspace()) {
+    void replaceSandboxTree(data.worktree).catch(() => {})
+    void syncSandboxState()
+  }
   return true
 }
 
@@ -429,6 +524,11 @@ export const writeWorkspaceFile = async (path: string, content: string) => {
     data.worktree[path] = content
     persistDemo()
     updateEntry(entry.id, (item) => ({ ...item, files: clone(data.worktree) }))
+    // 同步到沙箱：真文件落盘，重启后从这里恢复，智能体也能直接按路径读
+    if (canUseSandboxWorkspace()) {
+      void writeSandboxFile(path, content).catch(() => {})
+      void syncSandboxState()
+    }
     return
   }
   if (!entry.handle) {
@@ -462,6 +562,10 @@ export const discardFile = async (path: string) => {
       data.worktree[path] = data.head[path]
     } else {
       Reflect.deleteProperty(data.worktree, path)
+    // 沙箱里的对应文件也要删，否则磁盘上会留一个内存里不存在的文件
+    if (canUseSandboxWorkspace()) {
+      void deleteSandboxFile(path).catch(() => {})
+    }
     }
     persistDemo()
     updateEntry(entry.id, (item) => ({ ...item, files: clone(data.worktree) }))
@@ -669,6 +773,10 @@ export const importWorkspace = async (): Promise<{ ok: boolean; error?: string; 
       return { ok: false, error: 'empty' }
     }
     updateEntry(entry.id, (item) => ({ ...item, files: { ...item.files, ...incoming } }))
+    // 导入的文件同样落到沙箱，保证磁盘和内存一致
+    if (canUseSandboxWorkspace()) {
+      void replaceSandboxTree({ ...entry.files, ...incoming }).catch(() => {})
+    }
     // 演示仓库要落盘，本地目录靠下次刷新同步
     if (entry.source === 'demo') {
       const data = demoBranchData(entry.branch)

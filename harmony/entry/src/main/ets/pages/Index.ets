@@ -20,6 +20,18 @@ const TAG: string = 'DSChat'
 const WORKSPACE_URI_KEY: string = 'workspaceRootUri'
 const PREF_STORE: string = 'ds_workspace'
 
+/**
+ * 工作区沙箱布局：
+ *   filesDir/workspace/state.json   当前分支 + 各分支基线
+ *   filesDir/workspace/files/       当前工作树（真文件）
+ *
+ * 文件放沙箱而不是用户目录，是因为沙箱路径无需任何授权、随应用卸载清理，
+ * 智能体可以直接按路径读写，不用每次等用户点 Picker。
+ */
+const SANDBOX_WS_DIR: string = 'workspace'
+const SANDBOX_WS_STATE: string = 'state.json'
+const SANDBOX_WS_FILES: string = 'files'
+
 /** 壳回给页面的写盘结果，ArkTS 不接受匿名对象字面量 */
 interface ShellWriteResult {
   ok: boolean
@@ -406,7 +418,7 @@ class ShellBridge {
       const stamp: number = Date.now()
       const stageDir: string = context.tempDir + '/export-' + stamp
       if (!fs.accessSync(stageDir)) {
-        fs.mkdirSync(stageDir, true)
+        this.ensureDir(stageDir)
       }
       for (const name of names) {
         const segments: string[] = name.split('/')
@@ -414,7 +426,7 @@ class ShellBridge {
         for (let index = 0; index < segments.length - 1; index += 1) {
           current = current + '/' + segments[index]
           if (!fs.accessSync(current)) {
-            fs.mkdirSync(current, true)
+            this.ensureDir(current)
           }
         }
         const target: string = current + '/' + segments[segments.length - 1]
@@ -495,7 +507,7 @@ class ShellBridge {
       const stamp: number = Date.now()
       const outDir: string = context.tempDir + '/import-' + stamp
       if (!fs.accessSync(outDir)) {
-        fs.mkdirSync(outDir, true)
+        this.ensureDir(outDir)
       }
       // 先把这个 URI 对应的内容落到沙箱，zlib 只认沙箱路径
       const zipInSandbox: string = context.tempDir + '/import-' + stamp + '.zip'
@@ -636,6 +648,272 @@ class ShellBridge {
   }
 
   /**
+   * 同步探针：返回 filesDir 和沙箱目录是否就绪。
+   *
+   * 用来确认 javaScriptProxy 桥接本身通不通——同步方法不涉及 Promise，
+   * 能排掉异步方法注入失败的可能。
+   */
+  pingSandbox(): string {
+    try {
+      const filesDir: string = this.context.filesDir
+      const wsDir: string = filesDir + '/' + SANDBOX_WS_DIR
+      if (!fs.accessSync(wsDir)) {
+        this.ensureDir(wsDir)
+      }
+      const wsFiles: string = wsDir + '/' + SANDBOX_WS_FILES
+      this.ensureDir(wsFiles)
+      let entries: string[] = []
+      try {
+        entries = fs.listFileSync(wsFiles)
+      } catch (error) {
+        entries = ['<list failed>']
+      }
+      const probe: Record<string, Object> = {
+        'ok': true,
+        'filesDir': filesDir,
+        'wsDir': wsDir,
+        'exists': fs.accessSync(wsDir),
+        'files': entries.join(',')
+      }
+      return JSON.stringify(probe)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /**
+   * 幂等建目录。
+   *
+   * 鸿蒙的 fs.mkdirSync(path, true) 在目录已存在时会抛 "File exists"，
+   * 不像 Node 那样 silent。所有建目录的地方都走这里，避免第一步就炸。
+   */
+  ensureDir(dir: string): void {
+    try {
+      fs.mkdirSync(dir, true)
+    } catch (error) {
+      // 已存在是正常情况，忽略；其它错误也不该打断调用方
+      const message: string = (error as Error).message
+      if (!message.includes('exists') && !message.includes('Exists')) {
+        hilog.warn(DOMAIN, TAG, 'mkdir %{public}s failed: %{public}s', dir, message)
+      }
+    }
+  }
+
+  /** 沙箱工作区根目录，不存在就建 */
+  sandboxWorkspaceDir(): string {
+    const dir: string = this.context.filesDir + '/' + SANDBOX_WS_DIR
+    // 不用 accessSync 判断：路径不存在时它可能抛错而不是返回 false，
+    // 一旦抛出去后面的 mkdir 就永远执行不到。mkdirSync 带 recursive 时对已存在目录是幂等的。
+    this.ensureDir(dir)
+    return dir
+  }
+
+  /** 当前工作树目录 */
+  sandboxFilesDir(): string {
+    const dir: string = this.sandboxWorkspaceDir() + '/' + SANDBOX_WS_FILES
+    this.ensureDir(dir)
+    return dir
+  }
+
+  /**
+   * 读工作区状态：当前分支 + 各分支基线。
+   *
+   * 基线是「上次提交的样子」，工作树是 files/ 里的真文件，两者一减就是 diff。
+   * 不存在时返回空对象，由页面层决定要不要灌演示数据。
+   */
+  readWorkspaceState(): string {
+    try {
+      const path: string = this.sandboxWorkspaceDir() + '/' + SANDBOX_WS_STATE
+      if (!fs.accessSync(path)) {
+        return '{}'
+      }
+      return fs.readTextSync(path)
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'readWorkspaceState failed: %{public}s', (error as Error).message)
+      return '{}'
+    }
+  }
+
+  /** 写工作区状态 */
+  writeWorkspaceState(json: string): string {
+    try {
+      const path: string = this.sandboxWorkspaceDir() + '/' + SANDBOX_WS_STATE
+      const file = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+      try {
+        fs.writeSync(file.fd, json)
+      } finally {
+        fs.closeSync(file)
+      }
+      return '{"ok":true}'
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /** 把整个工作树读成 { path: content }（走沙箱，不碰用户目录） */
+  readWorkspaceTree(): string {
+    try {
+      const root: string = this.sandboxFilesDir()
+      const files: Record<string, string> = {}
+      let count = 0
+      const walk = (dirPath: string, prefix: string, depth: number): void => {
+        if (depth > 12 || count >= 2000) {
+          return
+        }
+        let names: string[] = []
+        try {
+          names = fs.listFileSync(dirPath)
+        } catch {
+          return
+        }
+        for (const name of names) {
+          if (count >= 2000) {
+            return
+          }
+          const childPath: string = prefix.length > 0 ? prefix + '/' + name : name
+          const full: string = dirPath + '/' + name
+          let stat: fs.Stat | null = null
+          try {
+            stat = fs.statSync(full)
+          } catch {
+            continue
+          }
+          if (stat.isDirectory()) {
+            walk(full, childPath, depth + 1)
+            continue
+          }
+          if (stat.size > 512 * 1024) {
+            continue
+          }
+          try {
+            files[childPath] = fs.readTextSync(full)
+            count += 1
+          } catch {
+            // 二进制跳过
+          }
+        }
+      }
+      walk(root, '', 0)
+      const payload: Record<string, Object> = { 'ok': true, 'files': files }
+      return JSON.stringify(payload)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /**
+   * 沙箱工作树里写一个文件。
+   *
+   * 和 writeWorkspaceFile 的区别：这个只认沙箱，不需要任何 URI 授权，
+   * 所以智能体随时能调，不会出现 no-workspace。
+   */
+  writeSandboxFile(path: string, content: string): string {
+    try {
+      const segments: string[] = path.split('/')
+      if (segments.length === 0 || path.length === 0) {
+        const bad: ShellWriteResult = { ok: false, error: 'bad-path' }
+        return JSON.stringify(bad)
+      }
+      let current: string = this.sandboxFilesDir()
+      for (let index = 0; index < segments.length - 1; index += 1) {
+        const name: string = segments[index]
+        if (name.length === 0 || name === '.' || name === '..') {
+          const bad: ShellWriteResult = { ok: false, error: 'bad-path' }
+          return JSON.stringify(bad)
+        }
+        current = current + '/' + name
+        if (!fs.accessSync(current)) {
+          this.ensureDir(current)
+        }
+      }
+      const fileName: string = segments[segments.length - 1]
+      if (fileName.length === 0 || fileName === '.' || fileName === '..') {
+        const bad: ShellWriteResult = { ok: false, error: 'bad-path' }
+        return JSON.stringify(bad)
+      }
+      const target: string = current + '/' + fileName
+      const file = fs.openSync(target, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+      try {
+        fs.writeSync(file.fd, content)
+      } finally {
+        fs.closeSync(file)
+      }
+      const done: ShellWriteResult = { ok: true }
+      return JSON.stringify(done)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /** 删沙箱里的一个文件（用于 diff 里“删除文件”的场景） */
+  deleteSandboxFile(path: string): string {
+    try {
+      const target: string = this.sandboxFilesDir() + '/' + path
+      if (fs.accessSync(target)) {
+        fs.unlinkSync(target)
+      }
+      const done: ShellWriteResult = { ok: true }
+      return JSON.stringify(done)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /**
+   * 用一份完整快照重建沙箱工作树。
+   *
+   * 切分支、导入 zip、重置演示仓库都走它：先清空 files/，再按 { path: content } 铺开。
+   */
+  replaceWorkspaceTree(filesJson: string): string {
+    try {
+      const files = JSON.parse(filesJson) as Record<string, string>
+      const root: string = this.sandboxFilesDir()
+      // 清空
+      const clear = (dirPath: string): void => {
+        let names: string[] = []
+        try {
+          names = fs.listFileSync(dirPath)
+        } catch {
+          return
+        }
+        for (const name of names) {
+          const full: string = dirPath + '/' + name
+          try {
+            const stat = fs.statSync(full)
+            if (stat.isDirectory()) {
+              clear(full)
+              fs.rmdirSync(full)
+            } else {
+              fs.unlinkSync(full)
+            }
+          } catch {
+            // 跳过删不掉的
+          }
+        }
+      }
+      clear(root)
+      // 铺开
+      let count = 0
+      for (const name of Object.keys(files)) {
+        const result: string = this.writeSandboxFile(name, files[name])
+        if (result.includes('"ok":true')) {
+          count += 1
+        }
+      }
+      const payload: Record<string, Object> = { 'ok': true, 'count': count }
+      return JSON.stringify(payload)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /**
    * 往上次选中的工作区目录里写一个文件。
    *
    * ArkWeb 拿不到 FileSystemDirectoryHandle，Web 端只能把内容交给壳来落盘。
@@ -659,7 +937,7 @@ class ShellBridge {
         }
         current = current + '/' + name
         if (!fs.accessSync(current)) {
-          fs.mkdirSync(current, true)
+          this.ensureDir(current)
         }
       }
       const fileName: string = segments[segments.length - 1]
@@ -900,6 +1178,12 @@ struct Index {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
     this.bridge = new ShellBridge(context)
+    // 沙箱工作区由壳自己建，不等 Web：Web 侧拿到 __DS_SHELL__ 之前什么都做不了。
+    try {
+      this.bridge.sandboxFilesDir()
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'sandbox init failed: %{public}s', (error as Error).message)
+    }
     // 把上次选过的工作区 URI 找回来并激活授权；不 await，别挡住首屏。
     this.bridge.restoreWorkspaceUri().catch((error: Error) => {
       hilog.warn(DOMAIN, TAG, 'restore workspace on boot failed: %{public}s', error.message)
@@ -954,7 +1238,7 @@ struct Index {
       })
     }, 600)
     if (!fs.accessSync(this.downloadDir)) {
-      fs.mkdirSync(this.downloadDir, true)
+      try { fs.mkdirSync(this.downloadDir, true) } catch (error) { /* 已存在 */ }
     }
     // 异步装载：同步拷 5.2 MB 会卡死生命周期，见 WebAssets 顶部注释
     WebAssets.install(context)
@@ -1409,7 +1693,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
@@ -1424,6 +1708,17 @@ struct Index {
             }
           })
           .onPageEnd((event) => {
+            // 沙箱工作区在页面加载完成时由壳初始化。
+            // 不放在 Web 侧启动逻辑里，是因为那一刻 javaScriptProxy 还没注入，
+            // __DS_SHELL__ 是 undefined，Web 侧判不出桥接可用就直接退出了。
+            try {
+              if (this.bridge) {
+                this.bridge.sandboxFilesDir()
+              }
+              hilog.info(DOMAIN, TAG, 'sandbox workspace ready')
+            } catch (error) {
+              hilog.warn(DOMAIN, TAG, 'sandbox init failed: %{public}s', (error as Error).message)
+            }
             hilog.info(DOMAIN, TAG, 'page end: %{public}s', event.url)
             this.controller
               .runJavaScript(AUTH_TOKEN_PATCH)

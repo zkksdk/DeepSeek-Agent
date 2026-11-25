@@ -114,6 +114,8 @@ const TreeRow = ({
 }
 
 /** 工作区：文件树 + 分支切换 + Monaco diff */
+/** 临时探针：常驻显示桥接状态，方便在没有日志的情况下定位问题 */
+
 export const WorkspacePanel = () => {
   const t = useTranslate()
   const open = useWorkspacePanel((state) => state.open)
@@ -142,6 +144,24 @@ export const WorkspacePanel = () => {
     if (open) {
       initWorkspace()
     }
+  }, [open])
+
+  // 临时诊断：确认沙箱桥接是否可用
+  useEffect(() => {
+    if (!open) return
+    const shell = (window as unknown as { __DS_SHELL__?: Record<string, unknown> }).__DS_SHELL__
+    if (!shell) {
+      showToast('无桥接')
+      return
+    }
+    const ping = (shell as { pingSandbox?: () => string }).pingSandbox
+    let detail = 'no-ping'
+    try {
+      detail = typeof ping === 'function' ? String(ping.call(shell)).slice(0, 90) : 'ping-not-fn'
+    } catch (e) {
+      detail = 'ERR ' + String(e).slice(0, 60)
+    }
+    showToast('探针: ' + detail)
   }, [open])
 
   const stats = useMemo(() => workspaceStats(base, files), [base, files])
@@ -458,7 +478,6 @@ export const WorkspacePanel = () => {
       </div>
 
       <div className={styles.status}>
-        <span className={styles.statusDot} data-source={source} />
         <span>
           {branch} · {t('workspaceStatusHint')}
         </span>

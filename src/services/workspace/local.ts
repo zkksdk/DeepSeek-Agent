@@ -16,6 +16,18 @@ type ShellPicker = {
   exportWorkspace?: (filesJson: string) => Promise<string>
   /** 选一个 zip 解压，返回其中的文本文件 */
   importWorkspace?: () => Promise<string>
+  /** 读沙箱工作区状态（当前分支 + 各分支基线） */
+  readWorkspaceState?: () => Promise<string>
+  /** 写沙箱工作区状态 */
+  writeWorkspaceState?: (json: string) => Promise<string>
+  /** 读沙箱工作树，返回 { ok, files } */
+  readWorkspaceTree?: () => Promise<string>
+  /** 写沙箱工作树里的一个文件 */
+  writeSandboxFile?: (path: string, content: string) => Promise<string>
+  /** 删沙箱工作树里的一个文件 */
+  deleteSandboxFile?: (path: string) => Promise<string>
+  /** 用完整快照重建沙箱工作树 */
+  replaceWorkspaceTree?: (filesJson: string) => Promise<string>
 }
 
 const shellBridge = () => (window as unknown as { __DS_SHELL__?: ShellPicker }).__DS_SHELL__
@@ -128,6 +140,61 @@ export const importViaShell = async (): Promise<ShellTransferResult> => {
     throw new Error('shell import failed')
   }
   return JSON.parse(raw) as ShellTransferResult
+}
+
+/** 沙箱工作区是不是可用（鸿蒙壳独有） */
+export const canUseSandboxWorkspace = () =>
+  typeof shellBridge()?.readWorkspaceTree === 'function' &&
+  typeof shellBridge()?.writeSandboxFile === 'function'
+
+export type SandboxTree = { ok: boolean; files?: Record<string, string>; error?: string }
+
+/** 读沙箱工作树 */
+export const readSandboxTree = async (): Promise<SandboxTree> => {
+  const shell = shellBridge()
+  if (!shell?.readWorkspaceTree) throw new Error('sandbox unsupported')
+  const raw = await shell.readWorkspaceTree()
+  if (!raw) throw new Error('sandbox read failed')
+  return JSON.parse(raw) as SandboxTree
+}
+
+/** 写沙箱里的一个文件 */
+export const writeSandboxFile = async (path: string, content: string) => {
+  const shell = shellBridge()
+  if (!shell?.writeSandboxFile) throw new Error('sandbox unsupported')
+  const raw = await shell.writeSandboxFile(path, content)
+  const result = JSON.parse(raw ?? '{}') as { ok?: boolean; error?: string }
+  if (!result.ok) throw new Error(result.error ?? 'sandbox write failed')
+}
+
+/** 删沙箱里的一个文件 */
+export const deleteSandboxFile = async (path: string) => {
+  const shell = shellBridge()
+  if (!shell?.deleteSandboxFile) return
+  await shell.deleteSandboxFile(path)
+}
+
+/** 用完整快照重建沙箱工作树 */
+export const replaceSandboxTree = async (files: Record<string, string>): Promise<number> => {
+  const shell = shellBridge()
+  if (!shell?.replaceWorkspaceTree) throw new Error('sandbox unsupported')
+  const raw = await shell.replaceWorkspaceTree(JSON.stringify(files))
+  const result = JSON.parse(raw ?? '{}') as { ok?: boolean; count?: number; error?: string }
+  if (!result.ok) throw new Error(result.error ?? 'sandbox replace failed')
+  return result.count ?? 0
+}
+
+/** 读/写沙箱工作区状态 */
+export const readSandboxState = async (): Promise<string> => {
+  const shell = shellBridge()
+  if (!shell?.readWorkspaceState) return '{}'
+  return (await shell.readWorkspaceState()) || '{}'
+}
+
+export const writeSandboxState = async (json: string) => {
+  const shell = shellBridge()
+  if (!shell?.writeWorkspaceState) return
+  await shell.writeWorkspaceState(json)
 }
 
 export const pickDirectory = async (): Promise<FileSystemDirectoryHandle> => {
