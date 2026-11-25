@@ -415,3 +415,35 @@ body[data-ds-dark-theme] .sider[data-glass] .bottom {
   font-size: 10px;
   text-align: center;
 }
+
+
+/* 侧栏顶部两个 tab：工作区 / 聊天会话 */
+.siderTabs {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 4px 10px 2px;
+}
+
+.siderTab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 7px 6px;
+  border-radius: 9px;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.siderTab:hover {
+  background-color: var(--dsw-alias-interactive-bg-hover);
+}
+
+.siderTabActive {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-2);
+  font-weight: 500;
+}

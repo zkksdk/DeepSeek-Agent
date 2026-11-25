@@ -35,6 +35,8 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
     () => groupSessionsByWorkspace(sessions, entries, t('workspaceUngrouped')),
     [sessions, entries, t]
   )
+  // 侧栏顶部两个 tab：工作区（按目录归类）/ 聊天会话（按时间）
+  const [tab, setTab] = useState<'workspace' | 'chats'>('workspace')
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
   const [deletePending, setDeletePending] = useState(false)
   const desktopReady = useDesktop((state) => state.status === 'connected')
@@ -99,45 +101,69 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
         </span>
         {t('newChat')}
       </button>
+      <div className={styles.siderTabs} role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'workspace'}
+          className={clsx(styles.siderTab, tab === 'workspace' && styles.siderTabActive)}
+          onClick={() => setTab('workspace')}
+        >
+          {t('workspaceSectionTitle')}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'chats'}
+          className={clsx(styles.siderTab, tab === 'chats' && styles.siderTabActive)}
+          onClick={() => setTab('chats')}
+        >
+          {t('workspaceChatSectionTitle')}
+        </button>
+      </div>
       <div className={styles.listWrap}>
         <div className={styles.list}>
-          {workspaceGroups.length > 0 ? (
+          {tab === 'workspace' ? (
             <div className={styles.section}>
-              <div className={styles.sectionHeader}>{t('workspaceSectionTitle')}</div>
-              {workspaceGroups.map((group) => (
-                <div key={group.key} className={styles.workspaceGroup}>
-                  <div className={styles.workspaceGroupHead}>
-                    <span className={styles.workspaceGroupIcon}>
-                      <IconFolder />
-                    </span>
-                    <span className={styles.workspaceGroupName}>{group.name}</span>
-                    <span className={styles.workspaceGroupCount}>{group.sessions.length}</span>
+              {workspaceGroups.length === 0 ? (
+                <div className={styles.sectionHeader}>{t('workspaceNoGroups')}</div>
+              ) : (
+                workspaceGroups.map((group) => (
+                  <div key={group.key} className={styles.workspaceGroup}>
+                    <div className={styles.workspaceGroupHead}>
+                      <span className={styles.workspaceGroupIcon}>
+                        <IconFolder />
+                      </span>
+                      <span className={styles.workspaceGroupName}>{group.name}</span>
+                      <span className={styles.workspaceGroupCount}>{group.sessions.length}</span>
+                    </div>
+                    {group.sessions.map((session) => (
+                      <SessionItem
+                        key={session.id}
+                        session={session}
+                        active={session.id === activeId}
+                        onDelete={() => setDeleting(session)}
+                      />
+                    ))}
                   </div>
-                  {group.sessions.map((session) => (
-                    <SessionItem
-                      key={session.id}
-                      session={session}
-                      active={session.id === activeId}
-                      onDelete={() => setDeleting(session)}
-                    />
-                  ))}
-                </div>
-              ))}
+                ))
+              )}
             </div>
-          ) : null}
-          {groups.map((group) => (
-            <div key={group.key} className={styles.section}>
-              <div className={styles.sectionHeader}>{group.label}</div>
-              {group.sessions.map((session) => (
-                <SessionItem
-                  key={`chat-${session.id}`}
-                  session={session}
-                  active={session.id === activeId}
-                  onDelete={() => setDeleting(session)}
-                />
-              ))}
-            </div>
-          ))}
+          ) : (
+            groups.map((group) => (
+              <div key={group.key} className={styles.section}>
+                <div className={styles.sectionHeader}>{group.label}</div>
+                {group.sessions.map((session) => (
+                  <SessionItem
+                    key={`chat-${session.id}`}
+                    session={session}
+                    active={session.id === activeId}
+                    onDelete={() => setDeleting(session)}
+                  />
+                ))}
+              </div>
+            ))
+          )}
         </div>
       </div>
       <div className={styles.bottom}>
