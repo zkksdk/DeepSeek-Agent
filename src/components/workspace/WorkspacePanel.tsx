@@ -146,24 +146,6 @@ export const WorkspacePanel = () => {
     }
   }, [open])
 
-  // 临时诊断：确认沙箱桥接是否可用
-  useEffect(() => {
-    if (!open) return
-    const shell = (window as unknown as { __DS_SHELL__?: Record<string, unknown> }).__DS_SHELL__
-    if (!shell) {
-      showToast('无桥接')
-      return
-    }
-    const ping = (shell as { pingSandbox?: () => string }).pingSandbox
-    let detail = 'no-ping'
-    try {
-      detail = typeof ping === 'function' ? String(ping.call(shell)).slice(0, 90) : 'ping-not-fn'
-    } catch (e) {
-      detail = 'ERR ' + String(e).slice(0, 60)
-    }
-    showToast('探针: ' + detail)
-  }, [open])
-
   const stats = useMemo(() => workspaceStats(base, files), [base, files])
   const changes = useMemo(
     () =>
@@ -445,7 +427,7 @@ export const WorkspacePanel = () => {
           <div className={styles.sidebarFoot}>
             <span>{t('workspaceFileCount', { count: Object.keys(files).length })}</span>
             <span className={styles.sourceTag} data-source={source}>
-              {source === 'demo' ? t('workspaceDemo') : t('workspaceLocal')}
+              {t('workspaceSandboxTag')}
             </span>
           </div>
         </aside>
