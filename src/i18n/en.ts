@@ -552,6 +552,7 @@ export const en = {
   workspacePickerLabel: 'Workspace',
   workspacePickerNone: 'None',
   workspacePickerAdd: 'Open folder…',
+  workspaceOpenPanel: 'Open workspace panel',
   workspacePickerDemo: 'Demo repo',
   workspacePickerManage: 'Manage workspaces',
   settingsWorkspaceHint: 'Switch branches from the workspace panel or the picker at the bottom left of the input',

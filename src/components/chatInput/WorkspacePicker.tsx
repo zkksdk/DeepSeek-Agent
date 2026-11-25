@@ -3,7 +3,6 @@ import { useTranslate } from '../../i18n/index.js'
 import {
   useWorkspace,
   setActiveWorkspace,
-  openLocalWorkspace,
 } from '../../services/workspace/store.js'
 import { setDesktopPlane, setWebPlane, useWorkspacePlane } from '../../services/workspace/plane.js'
 import {
@@ -12,6 +11,7 @@ import {
   useDesktop,
 } from '../../services/agent/desktop/store.js'
 import { showToast } from '../base/toastState.js'
+import { openWorkspacePanel } from '../workspace/workspacePanelState.js'
 import { PillPicker } from './PillPicker.js'
 import { IconDesktop, IconFolder } from '../agent/ToolIcons.js'
 import styles from './PillPicker.module.css'
@@ -111,15 +111,14 @@ export const WorkspacePicker = () => {
           type="button"
           className={styles.option}
           onClick={() => {
-            setWebPlane()
-            void openLocalWorkspace()
+            openWorkspacePanel()
           }}
         >
           <span className={styles.optionIcon}>
             <IconFolder />
           </span>
           <span className={styles.optionBody}>
-            <span className={styles.optionLabel}>{t('workspacePickerAdd')}</span>
+            <span className={styles.optionLabel}>{t('workspaceOpenPanel')}</span>
           </span>
         </button>
       }

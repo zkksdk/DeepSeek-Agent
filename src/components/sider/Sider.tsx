@@ -2,9 +2,8 @@ import clsx from 'clsx'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { IconPanelLeftOutline16, IconSettingsOutline16, NewChatIcon } from '../base/icons.js'
-import { IconFolder, IconSpark } from '../agent/ToolIcons.js'
+import { IconSpark } from '../agent/ToolIcons.js'
 import { openAgentPanel } from '../agent/agentPanelState.js'
-import { openWorkspacePanel } from '../workspace/workspacePanelState.js'
 import { isExtensionAvailable, subscribeExtension } from '../../services/agent/extension.js'
 import { useDesktop } from '../../services/agent/desktop/store.js'
 import { useMcp } from '../../services/agent/mcp/store.js'
@@ -112,19 +111,6 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
         </div>
       </div>
       <div className={styles.bottom}>
-        <button
-          type="button"
-          className={styles.settings}
-          onClick={() => {
-            openWorkspacePanel()
-            closeMobileSider()
-          }}
-        >
-          <span className={styles.settingsIcon}>
-            <IconFolder />
-          </span>
-          <span className={styles.settingsLabel}>{t('workspaceTitle')}</span>
-        </button>
         <button type="button" className={styles.settings} onClick={() => openAgentPanel()}>
           <span className={styles.settingsIcon}>
             <IconSpark />

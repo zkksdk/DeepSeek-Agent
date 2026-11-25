@@ -543,6 +543,7 @@ export const zh = {
   workspacePickerLabel: '工作区',
   workspacePickerNone: '未选择',
   workspacePickerAdd: '打开文件夹…',
+  workspaceOpenPanel: '打开工作区面板',
   workspacePickerDemo: '示例仓库',
   workspacePickerManage: '管理工作区',
   settingsWorkspaceHint: '切换分支请用工作区面板或输入框左下角的选择器',
