@@ -28,6 +28,10 @@ type ShellPicker = {
   deleteSandboxFile?: (path: string) => Promise<string>
   /** 用完整快照重建沙箱工作树 */
   replaceWorkspaceTree?: (filesJson: string) => Promise<string>
+  /** 沙箱现状：路径、文件数、字节数 */
+  sandboxInfo?: () => Promise<string>
+  /** 清空沙箱工作树 */
+  clearSandbox?: () => Promise<string>
 }
 
 const shellBridge = () => (window as unknown as { __DS_SHELL__?: ShellPicker }).__DS_SHELL__
@@ -185,6 +189,31 @@ export const replaceSandboxTree = async (files: Record<string, string>): Promise
 }
 
 /** 读/写沙箱工作区状态 */
+export type SandboxInfo = { ok: boolean; path?: string; count?: number; bytes?: number; error?: string }
+
+/** 读沙箱现状 */
+export const getSandboxInfo = async (): Promise<SandboxInfo> => {
+  const shell = shellBridge()
+  if (!shell?.sandboxInfo) return { ok: false, error: 'unsupported' }
+  try {
+    return JSON.parse((await shell.sandboxInfo()) ?? '{}') as SandboxInfo
+  } catch {
+    return { ok: false, error: 'parse' }
+  }
+}
+
+/** 清空沙箱 */
+export const clearSandboxTree = async (): Promise<boolean> => {
+  const shell = shellBridge()
+  if (!shell?.clearSandbox) return false
+  try {
+    const raw = await shell.clearSandbox()
+    return Boolean((JSON.parse(raw ?? '{}') as { ok?: boolean }).ok)
+  } catch {
+    return false
+  }
+}
+
 export const readSandboxState = async (): Promise<string> => {
   const shell = shellBridge()
   if (!shell?.readWorkspaceState) return '{}'

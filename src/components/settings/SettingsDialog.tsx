@@ -57,7 +57,7 @@ import { GithubSetting } from './GithubSetting.js'
 import { SettingCell, ToggleCell } from './SettingCell.js'
 import { UsageSetting } from './UsageSetting.js'
 import { MemorySetting } from './MemorySetting.js'
-import { WorkspaceSetting } from './WorkspaceSetting.js'
+import { SandboxSetting } from './SandboxSetting.js'
 import { Button } from '../base/Button.js'
 import { Modal } from '../base/Modal.js'
 import { Select } from '../base/Select.js'
@@ -86,7 +86,7 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
   },
   { value: 'agent', label: 'settingsGroupAgent', icon: <IconSpark /> },
   { value: 'memory', label: 'settingsGroupMemory', icon: <IconSpark /> },
-  { value: 'workspace', label: 'settingsGroupWorkspace', icon: <IconFolder /> },
+  { value: 'workspace', label: 'settingsGroupSandbox', icon: <IconFolder /> },
   { value: 'data', label: 'settingsGroupData', icon: <IconDataOutline16 /> },
 ]
 
@@ -167,7 +167,7 @@ const SettingsContent = () => {
           ) : section === 'memory' ? (
           <MemorySetting />
         ) : section === 'workspace' ? (
-            <WorkspaceSetting />
+            <SandboxSetting />
           ) : (
             <>
               <ImportHistory historyImport={historyImport} disabled={historyBusy} />

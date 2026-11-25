@@ -1,27 +1,24 @@
 import clsx from 'clsx'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { Modal } from '../base/Modal.js'
-import { Button } from '../base/Button.js'
 import { IconButton } from '../base/IconButton.js'
+import { showToast } from '../base/toastState.js'
 import {
   IconChevronDownOutline14,
   IconChevronRightOutline14,
   IconRefreshOutline16,
 } from '../base/icons.js'
-import { IconFile, IconFolder, IconMove } from '../agent/ToolIcons.js'
-import { showToast } from '../base/toastState.js'
+import { IconFile, IconFolder } from '../agent/ToolIcons.js'
 import { diffFile, totalChanges } from '../../services/workspace/diff.js'
 import { workspaceStats } from '../../services/workspace/diff.js'
 import {
   backToDemo,
-  createBranch,
   discardFile,
   initWorkspace,
   exportWorkspace,
   importWorkspace,
   refreshLocalWorkspace,
-  setBranch,
   useWorkspace,
 } from '../../services/workspace/store.js'
 import { DiffViewer } from './DiffViewer.js'
@@ -122,9 +119,6 @@ export const WorkspacePanel = () => {
   const focusPath = useWorkspacePanel((state) => state.focusPath)
   const source = useWorkspace((state) => state.source)
   const name = useWorkspace((state) => state.name)
-  const root = useWorkspace((state) => state.root)
-  const branch = useWorkspace((state) => state.branch)
-  const branches = useWorkspace((state) => state.branches)
   const files = useWorkspace((state) => state.files)
   const base = useWorkspace((state) => state.base)
   const loading = useWorkspace((state) => state.loading)
@@ -133,12 +127,8 @@ export const WorkspacePanel = () => {
   const [selected, setSelected] = useState<string | null>(null)
   const [sideBySide, setSideBySide] = useState(true)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [branchOpen, setBranchOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [branchName, setBranchName] = useState('')
   const [transferBusy, setTransferBusy] = useState(false)
   const [transferMessage, setTransferMessage] = useState('')
-  const branchRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) {
@@ -180,19 +170,6 @@ export const WorkspacePanel = () => {
     setSelected(balanced?.path ?? changes[0]?.path ?? null)
   }, [open, selected, stats, changes, focusPath])
 
-  useEffect(() => {
-    if (!branchOpen) {
-      return
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      if (!branchRef.current?.contains(event.target as Node)) {
-        setBranchOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onPointerDown)
-    return () => document.removeEventListener('mousedown', onPointerDown)
-  }, [branchOpen])
-
   if (!open) {
     return null
   }
@@ -209,24 +186,6 @@ export const WorkspacePanel = () => {
     })
   }
 
-  const submitBranch = () => {
-    const result = createBranch(branchName)
-    if (result.ok) {
-      setCreating(false)
-      setBranchName('')
-      setBranchOpen(false)
-      return
-    }
-    showToast({
-      key:
-        result.error === 'exists'
-          ? 'workspaceBranchExists'
-          : result.error === 'local'
-            ? 'workspaceLocalBranch'
-            : 'workspaceBranchInvalid',
-      type: 'error',
-    })
-  }
 
   const currentDiffIndex = diff && diff.status !== 'unchanged' ? diff : null
 
@@ -250,89 +209,7 @@ export const WorkspacePanel = () => {
       footer={null}
     >
       <div className={styles.toolbar}>
-        <div className={styles.branchWrap} ref={branchRef}>
-          <button
-            type="button"
-            className={styles.branchButton}
-            aria-expanded={branchOpen}
-            aria-haspopup="listbox"
-            onClick={() => setBranchOpen((value) => !value)}
-            disabled={loading}
-          >
-            <IconMove />
-            <span className={styles.branchName}>{branch}</span>
-            <IconChevronDownOutline14 />
-          </button>
-          {branchOpen ? (
-            <div className={styles.branchMenu} role="listbox">
-              <div className={styles.branchMenuHead}>
-                {source === 'demo' ? t('workspaceDemoHint') : t('workspaceLocalHint')}
-              </div>
-              {branches.length === 0 ? (
-                <div className={styles.branchEmpty}>{t('workspaceNoBranches')}</div>
-              ) : (
-                branches.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    role="option"
-                    aria-selected={item === branch}
-                    className={clsx(styles.branchItem, item === branch && styles.branchActive)}
-                    onClick={() => {
-                      if (source === 'demo' && setBranch(item)) {
-                        setBranchOpen(false)
-                      }
-                    }}
-                  >
-                    <span className={styles.branchDot} data-active={item === branch} />
-                    <span className={styles.branchItemName}>{item}</span>
-                    {item === branch ? (
-                      <span className={styles.branchTag}>{t('workspaceCurrent')}</span>
-                    ) : null}
-                  </button>
-                ))
-              )}
-              {source === 'demo' ? (
-                <div className={styles.branchCreate}>
-                  {creating ? (
-                    <>
-                      <input
-                        className={styles.branchInput}
-                        value={branchName}
-                        autoFocus
-                        placeholder={t('workspaceNewBranchPlaceholder')}
-                        onChange={(event) => setBranchName(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            submitBranch()
-                          }
-                          if (event.key === 'Escape') {
-                            setCreating(false)
-                          }
-                        }}
-                      />
-                      <Button variant="primary" size="s" onClick={submitBranch}>
-                        {t('workspaceCreate')}
-                      </Button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className={styles.newBranch}
-                      onClick={() => setCreating(true)}
-                    >
-                      + {t('workspaceNewBranch')}
-                    </button>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
 
-        <span className={styles.root} title={root}>
-          {root}
-        </span>
         <span className={styles.spacer} />
         <span className={styles.totals}>
           <span className={styles.add}>+{totals.additions}</span>
@@ -461,7 +338,7 @@ export const WorkspacePanel = () => {
 
       <div className={styles.status}>
         <span>
-          {branch} · {t('workspaceStatusHint')}
+          {t('workspaceStatusHint')}
         </span>
         <span className={styles.spacer} />
         <span className={styles.statusStat}>

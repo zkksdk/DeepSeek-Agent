@@ -700,6 +700,91 @@ class ShellBridge {
     }
   }
 
+  /**
+   * 沙箱现状：路径、文件数、总字节数。
+   *
+   * 沙箱路径在宿主机上不可见（context.filesDir 是 /data/storage/...，
+   * hdc 看到的是 /data/app/...），所以只能由壳自己报出来。
+   */
+  sandboxInfo(): string {
+    try {
+      const root: string = this.sandboxFilesDir()
+      let count: number = 0
+      let bytes: number = 0
+      const walk = (dirPath: string, depth: number): void => {
+        if (depth > 12) {
+          return
+        }
+        let names: string[] = []
+        try {
+          names = fs.listFileSync(dirPath)
+        } catch {
+          return
+        }
+        for (const name of names) {
+          const full: string = dirPath + '/' + name
+          try {
+            const stat = fs.statSync(full)
+            if (stat.isDirectory()) {
+              walk(full, depth + 1)
+            } else {
+              count += 1
+              bytes += stat.size
+            }
+          } catch {
+            // 跳过拿不到 stat 的
+          }
+        }
+      }
+      walk(root, 0)
+      const info: Record<string, Object> = {
+        'ok': true,
+        'path': root,
+        'count': count,
+        'bytes': bytes
+      }
+      return JSON.stringify(info)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /** 清空沙箱工作树（保留目录结构） */
+  clearSandbox(): string {
+    try {
+      const root: string = this.sandboxFilesDir()
+      const clear = (dirPath: string): void => {
+        let names: string[] = []
+        try {
+          names = fs.listFileSync(dirPath)
+        } catch {
+          return
+        }
+        for (const name of names) {
+          const full: string = dirPath + '/' + name
+          try {
+            const stat = fs.statSync(full)
+            if (stat.isDirectory()) {
+              clear(full)
+              fs.rmdirSync(full)
+            } else {
+              fs.unlinkSync(full)
+            }
+          } catch {
+            // 跳过删不掉的
+          }
+        }
+      }
+      clear(root)
+      const done: ShellWriteResult = { ok: true }
+      return JSON.stringify(done)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
   /** 沙箱工作区根目录，不存在就建 */
   sandboxWorkspaceDir(): string {
     const dir: string = this.context.filesDir + '/' + SANDBOX_WS_DIR
@@ -1693,7 +1778,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree', 'sandboxInfo', 'clearSandbox'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
