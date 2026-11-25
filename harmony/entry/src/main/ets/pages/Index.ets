@@ -1,7 +1,9 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit'
 import { webview } from '@kit.ArkWeb'
 import { geoLocationManager } from '@kit.LocationKit'
-import { fileIo as fs, picker } from '@kit.CoreFileKit'
+import { fileIo as fs, picker, fileUri, fileShare } from '@kit.CoreFileKit'
+import { preferences } from '@kit.ArkData'
+import { zlib } from '@kit.BasicServicesKit'
 import { notificationManager } from '@kit.NotificationKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import { KeyboardAvoidMode, window } from '@kit.ArkUI'
@@ -10,8 +12,19 @@ import { http } from '@kit.NetworkKit'
 import { util } from '@kit.ArkTS'
 import { WebAssets } from '../web/WebAssets'
 
-const DOMAIN: number = 0x0000
+// 0x0000 是保留值，hilog 会把它吞掉，日志里一条都看不到。用应用自己的 domain。
+const DOMAIN: number = 0xA04510
 const TAG: string = 'DSChat'
+
+/** 记住上次选中的工作区目录 URI，重启后靠它恢复授权 */
+const WORKSPACE_URI_KEY: string = 'workspaceRootUri'
+const PREF_STORE: string = 'ds_workspace'
+
+/** 壳回给页面的写盘结果，ArkTS 不接受匿名对象字面量 */
+interface ShellWriteResult {
+  ok: boolean
+  error?: string
+}
 
 /**
  * 页面 origin。用 https 而不是 file:// 或 resource://，是为了拿到**安全上下文**：
@@ -193,6 +206,14 @@ class ShellBridge {
   browseController: webview.WebviewController | null = null
   /** 最近一次打开的地址，页面点「展开」时用它 */
   private lastBrowserUrl: string = ''
+  /**
+   * 最近一次选中的工作区目录 URI。
+   *
+   * pickFolder 只把文件内容快照回给页面，写入还得靠这个 URI 把路径拼回去。
+   * 页面刷新后这里会丢——所以 Web 端会把目录名一起存进 localStorage，
+   * 重启后提示用户重选一次（拿不到目录句柄是 ArkWeb 的硬限制）。
+   */
+  private workspaceRootUri: string = ''
 
   /**
    * 在内嵌浏览器里打开页面并执行脚本。
@@ -276,6 +297,285 @@ class ShellBridge {
         return ''
       }
       const rootUri: string = uris[0]
+      this.workspaceRootUri = rootUri
+      // 一次性把临时授权转成持久化授权，否则退到后台这份 URI 就废了。
+      // 失败不影响本次使用，只是下次还得重选。
+      await this.persistWorkspaceUri(rootUri)
+      return this.readFolderTree(rootUri)
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'pickFolder failed: %{public}s', (error as Error).message)
+      return ''
+    }
+  }
+
+  /**
+   * 把刚选中的目录 URI 从临时授权升级成持久化授权。
+   *
+   * HarmonyOS 的 picker 返回的是临时权限，应用退到后台就失效；
+   * persistPermission 能把它存下来，但下次启动还要 activatePermission 才能真正用。
+   */
+  async persistWorkspaceUri(uri: string): Promise<void> {
+    try {
+      const store = await preferences.getPreferences(this.context, PREF_STORE)
+      await store.put(WORKSPACE_URI_KEY, uri)
+      await store.flush()
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'save uri failed: %{public}s', (error as Error).message)
+    }
+    try {
+      const policy: fileShare.PolicyInfo = {
+        uri: uri,
+        operationMode: fileShare.OperationMode.READ_MODE | fileShare.OperationMode.WRITE_MODE
+      }
+      await fileShare.persistPermission([policy])
+      hilog.info(DOMAIN, TAG, 'persistPermission ok')
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'persistPermission failed: %{public}s', (error as Error).message)
+    }
+  }
+
+  /**
+   * 启动时把上次记住的目录 URI 找回来并使能授权。
+   *
+   * 这条链路是：preferences 里存的 URI → activatePermission 使能 →
+   * workspaceRootUri 赋值，页面重启后照样能读写，用户不用再选一次。
+   */
+  async restoreWorkspaceUri(): Promise<void> {
+    try {
+      const store = await preferences.getPreferences(this.context, PREF_STORE)
+      const saved = await store.get(WORKSPACE_URI_KEY, '')
+      const uri: string = typeof saved === 'string' ? saved : ''
+      if (uri.length === 0) {
+        return
+      }
+      const ok = await this.activateWorkspaceUri(uri)
+      if (ok) {
+        this.workspaceRootUri = uri
+        hilog.info(DOMAIN, TAG, 'workspace uri restored')
+      } else {
+        hilog.warn(DOMAIN, TAG, 'workspace uri restore denied')
+      }
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'restore uri failed: %{public}s', (error as Error).message)
+    }
+  }
+
+  /**
+   * 启用已经持久化的目录授权。
+   *
+   * 持久化只管「记住」，每次启动还得显式使能一次，否则权限摆在那儿用不了。
+   * 失败说明用户撤销过或换机了，走重选流程即可。
+   */
+  async activateWorkspaceUri(uri: string): Promise<boolean> {
+    if (uri.length === 0) {
+      return false
+    }
+    try {
+      const policy: fileShare.PolicyInfo = {
+        uri: uri,
+        operationMode: fileShare.OperationMode.READ_MODE | fileShare.OperationMode.WRITE_MODE
+      }
+      await fileShare.activatePermission([policy])
+      hilog.info(DOMAIN, TAG, 'activatePermission ok')
+      return true
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'activatePermission failed: %{public}s', (error as Error).message)
+      return false
+    }
+  }
+
+  /**
+   * 把工作区的全部文件打包成 zip 交给用户保存。
+   *
+   * 流程：内存里的 { path: content } 先落盘到沙箱临时目录，
+   * 再用 zlib 压成 zip，最后弹系统保存对话框让用户挑位置。
+   * zlib 只认沙箱路径，不能直接吃 picker 给的 URI，所以中间必须中转一次。
+   */
+  async exportWorkspace(filesJson: string): Promise<string> {
+    const fail = (message: string): string => {
+      const result: ShellWriteResult = { ok: false, error: message }
+      return JSON.stringify(result)
+    }
+    try {
+      const files = JSON.parse(filesJson) as Record<string, string>
+      const names: string[] = Object.keys(files)
+      if (names.length === 0) {
+        return fail('empty')
+      }
+      const context = this.context
+      const stamp: number = Date.now()
+      const stageDir: string = context.tempDir + '/export-' + stamp
+      if (!fs.accessSync(stageDir)) {
+        fs.mkdirSync(stageDir, true)
+      }
+      for (const name of names) {
+        const segments: string[] = name.split('/')
+        let current: string = stageDir
+        for (let index = 0; index < segments.length - 1; index += 1) {
+          current = current + '/' + segments[index]
+          if (!fs.accessSync(current)) {
+            fs.mkdirSync(current, true)
+          }
+        }
+        const target: string = current + '/' + segments[segments.length - 1]
+        const handle = fs.openSync(target, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+        try {
+          fs.writeSync(handle.fd, files[name])
+        } finally {
+          fs.closeSync(handle)
+        }
+      }
+      const zipPath: string = context.tempDir + '/workspace-' + stamp + '.zip'
+      const options: zlib.Options = {
+        level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION,
+        memLevel: zlib.MemLevel.MEM_LEVEL_DEFAULT,
+        strategy: zlib.CompressStrategy.COMPRESS_STRATEGY_DEFAULT_STRATEGY
+      }
+      await zlib.compressFile(stageDir, zipPath, options)
+
+      // 用 DOWNLOAD 模式直接落到 Download/<包名>/，不弹选择界面。
+      // 默认模式每次都要用户点确认，而 HarmonyOS 的系统浮层按钮不受合成点击，
+      // 自动化测试根本过不去；DOWNLOAD 模式没有这一步。
+      const saver = new picker.DocumentViewPicker(context)
+      const saveOptions = new picker.DocumentSaveOptions()
+      saveOptions.pickerMode = picker.DocumentPickerMode.DOWNLOAD
+      // DOWNLOAD 模式自己决定落盘位置和文件名，不要塞 newFileNames，
+      // 两者同时给会让 save() 走进另一个分支。
+      saveOptions.fileSuffixChoices = ['.zip']
+      const uris = await saver.save(saveOptions)
+      if (uris.length === 0) {
+        return fail('cancelled')
+      }
+      // DOWNLOAD 模式给的 URI 指向一个目录（Download/<包名>），
+      // 要在里面建文件，不能拿目录本身当文件打开。
+      const dirPath: string = new fileUri.FileUri(uris[0]).path
+      const destPath: string = dirPath + '/workspace-' + stamp + '.zip'
+      const src = fs.openSync(zipPath, fs.OpenMode.READ_ONLY)
+      const dst = fs.openSync(destPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+      try {
+        const stat = fs.statSync(zipPath)
+        const buffer = new ArrayBuffer(stat.size)
+        fs.readSync(src.fd, buffer)
+        fs.writeSync(dst.fd, buffer)
+      } finally {
+        fs.closeSync(src)
+        fs.closeSync(dst)
+      }
+      fs.rmdirSync(stageDir)
+      hilog.info(DOMAIN, TAG, 'export ok: %{public}d files', names.length)
+      const done: ShellWriteResult = { ok: true }
+      return JSON.stringify(done)
+    } catch (error) {
+      const message: string = (error as Error).message
+      hilog.warn(DOMAIN, TAG, 'export failed: %{public}s', message)
+      return fail(message)
+    }
+  }
+
+  /**
+   * 让用户挑一个 zip，解压后把里面的文本文件全部读出来。
+   *
+   * 返回 { ok: true, files: { path: content } }，由页面层写进工作区。
+   */
+  async importWorkspace(): Promise<string> {
+    const fail = (message: string): string => {
+      const result: ShellWriteResult = { ok: false, error: message }
+      return JSON.stringify(result)
+    }
+    try {
+      const context = this.context
+      const documentPicker = new picker.DocumentViewPicker(context)
+      const options = new picker.DocumentSelectOptions()
+      options.maxSelectNumber = 1
+      options.fileSuffixFilters = ['.zip']
+      const uris = await documentPicker.select(options)
+      if (uris.length === 0) {
+        return fail('cancelled')
+      }
+      const stamp: number = Date.now()
+      const outDir: string = context.tempDir + '/import-' + stamp
+      if (!fs.accessSync(outDir)) {
+        fs.mkdirSync(outDir, true)
+      }
+      // 先把这个 URI 对应的内容落到沙箱，zlib 只认沙箱路径
+      const zipInSandbox: string = context.tempDir + '/import-' + stamp + '.zip'
+      const src = fs.openSync(new fileUri.FileUri(uris[0]).path, fs.OpenMode.READ_ONLY)
+      const dst = fs.openSync(zipInSandbox, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+      try {
+        const stat = fs.statSync(new fileUri.FileUri(uris[0]).path)
+        const buffer = new ArrayBuffer(stat.size)
+        fs.readSync(src.fd, buffer)
+        fs.writeSync(dst.fd, buffer)
+      } finally {
+        fs.closeSync(src)
+        fs.closeSync(dst)
+      }
+      const unzipOptions: zlib.Options = {
+        level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION,
+        memLevel: zlib.MemLevel.MEM_LEVEL_DEFAULT,
+        strategy: zlib.CompressStrategy.COMPRESS_STRATEGY_DEFAULT_STRATEGY
+      }
+      await zlib.decompressFile(zipInSandbox, outDir, unzipOptions)
+
+      const files: Record<string, string> = {}
+      let count = 0
+      const walk = (dirPath: string, prefix: string, depth: number): void => {
+        if (depth > 8 || count >= 400) {
+          return
+        }
+        let names: string[] = []
+        try {
+          names = fs.listFileSync(dirPath)
+        } catch {
+          return
+        }
+        for (const name of names) {
+          if (count >= 400) {
+            return
+          }
+          const childPath: string = prefix.length > 0 ? prefix + '/' + name : name
+          const full: string = dirPath + '/' + name
+          let stat: fs.Stat | null = null
+          try {
+            stat = fs.statSync(full)
+          } catch {
+            continue
+          }
+          if (stat.isDirectory()) {
+            walk(full, childPath, depth + 1)
+            continue
+          }
+          if (stat.size > 160 * 1024) {
+            continue
+          }
+          try {
+            files[childPath] = fs.readTextSync(full)
+            count += 1
+          } catch {
+            // 二进制文件跳过
+          }
+        }
+      }
+      walk(outDir, '', 0)
+      fs.rmdirSync(outDir)
+      hilog.info(DOMAIN, TAG, 'import ok: %{public}d files', count)
+      const payload: Record<string, Object> = { 'ok': true, 'files': files }
+      return JSON.stringify(payload)
+    } catch (error) {
+      const message: string = (error as Error).message
+      hilog.warn(DOMAIN, TAG, 'import failed: %{public}s', message)
+      return fail(message)
+    }
+  }
+
+  /**
+   * 遍历目录，把文本文件读成 { path: content } 快照。
+   *
+   * pickFolder 和 refreshWorkspace 共用这一段：前者顺便记住目录 URI，
+   * 后者用已有 URI 重扫，避免每次都弹系统选择器。
+   */
+  readFolderTree(rootUri: string): string {
+    try {
       const files: Record<string, string> = {}
       let truncated = false
       let count = 0
@@ -327,12 +627,84 @@ class ShellBridge {
         'truncated': truncated,
         'name': decodeURIComponent(rootUri.slice(rootUri.lastIndexOf('/') + 1))
       }
-      hilog.info(DOMAIN, TAG, 'pickFolder: %{public}d files', count)
+      hilog.info(DOMAIN, TAG, 'readFolderTree: %{public}d files', count)
       return JSON.stringify(payload)
     } catch (error) {
-      hilog.warn(DOMAIN, TAG, 'pickFolder failed: %{public}s', (error as Error).message)
+      hilog.warn(DOMAIN, TAG, 'readFolderTree failed: %{public}s', (error as Error).message)
       return ''
     }
+  }
+
+  /**
+   * 往上次选中的工作区目录里写一个文件。
+   *
+   * ArkWeb 拿不到 FileSystemDirectoryHandle，Web 端只能把内容交给壳来落盘。
+   * path 是相对路径（a/b.txt），层级不存在时逐级创建。
+   * 返回 '{"ok":true}' 或 '{"ok":false,"error":"..."}'。
+   */
+  writeWorkspaceFile(path: string, content: string): string {
+    if (this.workspaceRootUri.length === 0) {
+      return '{"ok":false,"error":"no-workspace"}'
+    }
+    try {
+      const segments: string[] = path.split('/')
+      if (segments.length === 0 || path.length === 0) {
+        return '{"ok":false,"error":"bad-path"}'
+      }
+      let current: string = this.workspaceRootUri
+      for (let index = 0; index < segments.length - 1; index += 1) {
+        const name: string = segments[index]
+        if (name.length === 0 || name === '.' || name === '..') {
+          return '{"ok":false,"error":"bad-path"}'
+        }
+        current = current + '/' + name
+        if (!fs.accessSync(current)) {
+          fs.mkdirSync(current, true)
+        }
+      }
+      const fileName: string = segments[segments.length - 1]
+      if (fileName.length === 0 || fileName === '.' || fileName === '..') {
+        return '{"ok":false,"error":"bad-path"}'
+      }
+      const target: string = current + '/' + fileName
+      // 官方写法：picker 给的是 URI，openSync 要的是真实路径，
+      // 转换方式是 new fileUri.FileUri(uri).path（不是 getPathFromUri，那个不存在）。
+      let openPath: string = target
+      try {
+        openPath = new fileUri.FileUri(target).path
+      } catch (error) {
+        hilog.warn(DOMAIN, TAG, 'fileUri to path failed: %{public}s', (error as Error).message)
+      }
+      const file = fs.openSync(openPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+      try {
+        fs.writeSync(file.fd, content)
+      } finally {
+        fs.closeSync(file)
+      }
+      hilog.info(DOMAIN, TAG, 'writeWorkspaceFile ok: %{public}s', path)
+      return '{"ok":true}'
+    } catch (error) {
+      const message: string = (error as Error).message
+      hilog.warn(DOMAIN, TAG, 'writeWorkspaceFile failed: %{public}s', message)
+      const failure: ShellWriteResult = {
+        ok: false,
+        error: message + ' | root=' + this.workspaceRootUri + ' | target=' + path
+      }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /**
+   * 重新扫一遍工作区目录，拿最新的文件树。
+   *
+   * 返回结构和 pickFolder 一致：{ files, truncated, name }。
+   * 目录 URI 还在时不用再弹选择器。
+   */
+  refreshWorkspace(): string {
+    if (this.workspaceRootUri.length === 0) {
+      return ''
+    }
+    return this.readFolderTree(this.workspaceRootUri)
   }
 
   /**
@@ -528,6 +900,10 @@ struct Index {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
     this.bridge = new ShellBridge(context)
+    // 把上次选过的工作区 URI 找回来并激活授权；不 await，别挡住首屏。
+    this.bridge.restoreWorkspaceUri().catch((error: Error) => {
+      hilog.warn(DOMAIN, TAG, 'restore workspace on boot failed: %{public}s', error.message)
+    })
     this.bridge.onHashChange = (hash: string) => {
       this.currentHash = hash
     }
@@ -1033,7 +1409,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {

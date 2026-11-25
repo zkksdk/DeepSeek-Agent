@@ -4,9 +4,15 @@ import { diffWorkspace } from './diff.js'
 import { deleteHandle, ensurePermission, loadHandle, saveHandle } from './handles.js'
 import {
   canPickDirectoryViaShell,
+  canWriteViaShell,
   pickDirectory,
   pickFolderViaShell,
   readLocalWorkspace,
+  refreshFolderViaShell,
+  writeFileViaShell,
+  canTransferViaShell,
+  exportViaShell,
+  importViaShell,
 } from './local.js'
 import type { WorkspaceSnapshot, WorkspaceSource } from './types.js'
 
@@ -186,6 +192,59 @@ const readSavedList = (): SavedList => {
   }
 }
 
+/**
+ * 壳工作区的文件快照缓存。
+ *
+ * 浏览器分支靠 IndexedDB 里的目录句柄恢复，壳分支没有句柄可用，
+ * 只能把上次读到的文件内容原样存下来——刷新后先拿它把面板填上，
+ * 用户点刷新再走 refreshWorkspace 重新读磁盘。
+ */
+const SNAPSHOT_KEY = 'deepseek-agent:workspace-snapshots'
+
+type ShellSnapshot = { name: string; files: Record<string, string> }
+
+const readShellSnapshots = (): Record<string, ShellSnapshot> => {
+  try {
+    const raw = localStorage.getItem(SNAPSHOT_KEY)
+    if (!raw) {
+      return {}
+    }
+    const parsed = JSON.parse(raw) as Record<string, ShellSnapshot>
+    if (!parsed || typeof parsed !== 'object') {
+      return {}
+    }
+    const result: Record<string, ShellSnapshot> = {}
+    for (const [id, value] of Object.entries(parsed)) {
+      if (value && typeof value.name === 'string' && value.files && typeof value.files === 'object') {
+        result[id] = { name: value.name, files: value.files }
+      }
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
+
+const persistShellSnapshot = (id: string, name: string, files: Record<string, string>) => {
+  try {
+    const all = readShellSnapshots()
+    all[id] = { name, files }
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(all))
+  } catch {
+    // 文件多时可能超配额，忽略即可——刷新后重选一次就能回来
+  }
+}
+
+const dropShellSnapshot = (id: string) => {
+  try {
+    const all = readShellSnapshots()
+    delete all[id]
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(all))
+  } catch {
+    // 忽略
+  }
+}
+
 const persistList = () => {
   const state = useWorkspace.getState()
   try {
@@ -237,15 +296,42 @@ export const initWorkspace = () => {
     ...mirror(fresh),
     error: null,
   })
-  void restoreLocalWorkspaces()
+  // 本地目录模式已下线：HarmonyOS 的目录授权是临时的，重开后必然失效，
+  // 强行恢复只会让面板停在一个用不了的目录上。现在只保留应用内工作区，
+  // 用户要带数据进来就走进口（zip 导入）。
+  void restoreLocalWorkspaces
 }
 
 /** 从 IndexedDB 取回句柄；没有读写权限时保留占位，点开时再申请 */
 const restoreLocalWorkspaces = async () => {
   const saved = readSavedList()
+  const snapshots = readShellSnapshots()
   for (const item of saved.local) {
     const handle = await loadHandle(item.id)
     if (!handle) {
+      // 壳工作区没有目录句柄，只剩上次存的快照——先把它填回去，
+      // 用户点刷新时 refreshLocalWorkspace 会走 refreshWorkspace 重读磁盘。
+      const snapshot = snapshots[item.id]
+      if (!snapshot) {
+        continue
+      }
+      const restored: WorkspaceEntry = {
+        id: item.id,
+        name: item.name,
+        source: 'local',
+        root: 'local',
+        branch: '工作区',
+        branches: [],
+        files: clone(snapshot.files),
+        base: clone(snapshot.files),
+        truncated: false,
+      }
+      useWorkspace.setState((state) => ({
+        entries: [...state.entries.filter((row) => row.id !== item.id), restored],
+      }))
+      if (saved.activeId === item.id) {
+        setActiveWorkspace(item.id)
+      }
       continue
     }
     try {
@@ -346,7 +432,17 @@ export const writeWorkspaceFile = async (path: string, content: string) => {
     return
   }
   if (!entry.handle) {
-    throw new Error('workspace not writable')
+    // 壳工作区：没有句柄，交给壳按相对路径落盘
+    if (!canWriteViaShell()) {
+      throw new Error('workspace not writable')
+    }
+    await writeFileViaShell(path, content)
+    updateEntry(entry.id, (item) => {
+      const files = { ...item.files, [path]: content }
+      persistShellSnapshot(item.id, item.name, files)
+      return { ...item, files }
+    })
+    return
   }
   const { writeLocalFile } = await import('./local.js')
   await writeLocalFile(entry.handle, path, content)
@@ -420,6 +516,10 @@ export const openLocalWorkspace = async () => {
         ...mirror(shellEntry),
         error: Object.keys(folder.files).length === 0 ? 'empty' : null,
       }))
+      // 壳分支拿不到目录句柄，句柄那条恢复路走不通；列表本身必须存下来，
+      // 否则刷新后这一项直接从面板里消失（之前就是这样丢的）。
+      persistList()
+      persistShellSnapshot(shellEntry.id, shellEntry.name, shellEntry.files)
       return
     }
     const handle = await pickDirectory()
@@ -460,7 +560,32 @@ export const openLocalWorkspace = async () => {
 export const refreshLocalWorkspace = async () => {
   const state = useWorkspace.getState()
   const entry = state.entries.find((item) => item.id === state.activeId)
-  if (!entry || entry.source !== 'local' || !entry.handle) {
+  if (!entry || entry.source !== 'local') {
+    return
+  }
+  if (!entry.handle) {
+    // 壳工作区：让壳用记住的目录 URI 重扫，不用再弹选择器
+    useWorkspace.setState({ loading: true })
+    try {
+      let folder = await refreshFolderViaShell()
+      if (!folder) {
+        // 壳丢了目录 URI（应用重开后必然发生，HarmonyOS 的目录授权是临时的），
+        // 直接让用户重选一次，比报错后让他自己找按钮省事。
+        folder = await pickFolderViaShell()
+        if (!folder) {
+          useWorkspace.setState({ loading: false, error: 'reselect' })
+          return
+        }
+      }
+      updateEntry(entry.id, (item) => {
+        const files = clone(folder.files)
+        persistShellSnapshot(item.id, folder.name, files)
+        return { ...item, name: folder.name, files, truncated: folder.truncated }
+      })
+      useWorkspace.setState({ loading: false, error: null })
+    } catch {
+      useWorkspace.setState({ loading: false, error: 'open' })
+    }
     return
   }
   useWorkspace.setState({ loading: true })
@@ -493,6 +618,7 @@ export const removeWorkspace = async (id: string) => {
     return false
   }
   await deleteHandle(id)
+  dropShellSnapshot(id)
   const entries = state.entries.filter((item) => item.id !== id)
   // 删掉的是当前工作区时，回落到演示仓库（它永远在列表里）
   const fallback = state.activeId === id ? entries[0] : undefined
@@ -502,6 +628,61 @@ export const removeWorkspace = async (id: string) => {
   })
   persistList()
   return true
+}
+
+/** 把当前工作区的全部文件打包成 zip，交给用户保存到手机里 */
+export const exportWorkspace = async (): Promise<{ ok: boolean; error?: string }> => {
+  const state = useWorkspace.getState()
+  const entry = state.entries.find((item) => item.id === state.activeId)
+  if (!entry) {
+    return { ok: false, error: 'no-workspace' }
+  }
+  if (!canTransferViaShell()) {
+    return { ok: false, error: 'unsupported' }
+  }
+  try {
+    const result = await exportViaShell(entry.files)
+    return { ok: result.ok, error: result.error }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'export failed' }
+  }
+}
+
+/** 从用户选的 zip 导入文件，全部写进当前工作区（同路径覆盖，其余保留） */
+export const importWorkspace = async (): Promise<{ ok: boolean; error?: string; count?: number }> => {
+  const state = useWorkspace.getState()
+  const entry = state.entries.find((item) => item.id === state.activeId)
+  if (!entry) {
+    return { ok: false, error: 'no-workspace' }
+  }
+  if (!canTransferViaShell()) {
+    return { ok: false, error: 'unsupported' }
+  }
+  try {
+    const result = await importViaShell()
+    if (!result.ok || !result.files) {
+      return { ok: false, error: result.error ?? 'import failed' }
+    }
+    const incoming = result.files
+    const count = Object.keys(incoming).length
+    if (count === 0) {
+      return { ok: false, error: 'empty' }
+    }
+    updateEntry(entry.id, (item) => ({ ...item, files: { ...item.files, ...incoming } }))
+    // 演示仓库要落盘，本地目录靠下次刷新同步
+    if (entry.source === 'demo') {
+      const data = demoBranchData(entry.branch)
+      for (const [path, content] of Object.entries(incoming)) {
+        data.worktree[path] = String(content)
+      }
+      persistDemo()
+    } else {
+      persistShellSnapshot(entry.id, entry.name, { ...entry.files, ...incoming })
+    }
+    return { ok: true, count }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'import failed' }
+  }
 }
 
 /** 回到演示仓库，并把它的文件树同步成内存里的最新状态 */
@@ -520,7 +701,9 @@ export const workspaceSnapshot = (): WorkspaceSnapshot | null => {
   if (!entry) {
     return null
   }
-  if (entry.source === 'local' && !entry.handle) {
+  // 壳工作区没有目录句柄，但只要能通过壳写盘就是可用的工作区。
+  // 之前这里只认 handle，导致手机上的本地目录在工具侧永远返回 null。
+  if (entry.source === 'local' && !entry.handle && !canWriteViaShell()) {
     return null
   }
   return {
@@ -531,7 +714,7 @@ export const workspaceSnapshot = (): WorkspaceSnapshot | null => {
     branches: entry.branches,
     files: entry.files,
     base: entry.base,
-    writable: entry.source === 'demo' || Boolean(entry.handle),
+    writable: entry.source === 'demo' || Boolean(entry.handle) || canWriteViaShell(),
     handle: entry.handle,
   }
 }

@@ -11,7 +11,9 @@
     "build:harmony": "node scripts/build.mjs && node scripts/sync-harmony-assets.mjs",
     "type": "tsc -p tsconfig.json",
     "lint": "oxlint src rspack.config.ts",
-    "format": "oxfmt --write ."
+    "format": "oxfmt --write .",
+    "backup:signing": "node scripts/backup-signing.mjs",
+    "push": "node scripts/backup-signing.mjs && git push"
   },
   "dependencies": {
     "@types/katex": "^0.16.5",

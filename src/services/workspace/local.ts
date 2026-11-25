@@ -6,12 +6,28 @@ type DirectoryPicker = (options?: {
   mode?: 'read' | 'readwrite'
 }) => Promise<FileSystemDirectoryHandle>
 
-type ShellPicker = { pickFolder?: () => Promise<string> }
+type ShellPicker = {
+  pickFolder?: () => Promise<string>
+  /** 往上次选中的目录写文件，返回 {"ok":true} 或 {"ok":false,"error":"..."} */
+  writeWorkspaceFile?: (path: string, content: string) => Promise<string>
+  /** 重扫上次选中的目录，返回和 pickFolder 一样的快照 */
+  refreshWorkspace?: () => Promise<string>
+  /** 把工作区打包成 zip 交给用户保存 */
+  exportWorkspace?: (filesJson: string) => Promise<string>
+  /** 选一个 zip 解压，返回其中的文本文件 */
+  importWorkspace?: () => Promise<string>
+}
+
+const shellBridge = () => (window as unknown as { __DS_SHELL__?: ShellPicker }).__DS_SHELL__
 
 /** 壳里有没有原生的文件夹选择（鸿蒙版走这条） */
-export const canPickDirectoryViaShell = () =>
-  typeof (window as unknown as { __DS_SHELL__?: ShellPicker }).__DS_SHELL__?.pickFolder ===
-  'function'
+export const canPickDirectoryViaShell = () => typeof shellBridge()?.pickFolder === 'function'
+
+/** 壳能不能把改动写回磁盘；不能时工作区只能当只读预览 */
+export const canWriteViaShell = () => typeof shellBridge()?.writeWorkspaceFile === 'function'
+
+/** 壳能不能用已有目录 URI 重扫，不用再弹选择器 */
+export const canRefreshViaShell = () => typeof shellBridge()?.refreshWorkspace === 'function'
 
 /** 能选目录：壳优先，其次浏览器原生 */
 export const canPickDirectory = () =>
@@ -42,6 +58,76 @@ export const pickFolderViaShell = async (): Promise<ShellFolder | null> => {
     return null
   }
   return JSON.parse(raw) as ShellFolder
+}
+
+/**
+ * 把改动写回壳选中的那个目录。
+ *
+ * ArkWeb 没有 FileSystemDirectoryHandle，Web 端算不出绝对路径，
+ * 只能把相对路径交给壳去拼。失败时抛出错误，由 store 层决定怎么提示。
+ */
+export const writeFileViaShell = async (path: string, content: string) => {
+  const shell = shellBridge()
+  if (!shell?.writeWorkspaceFile) {
+    throw new Error('shell write unsupported')
+  }
+  const raw = await shell.writeWorkspaceFile(path, content)
+  if (!raw) {
+    throw new Error('shell write failed')
+  }
+  const result = JSON.parse(raw) as { ok?: boolean; error?: string }
+  if (!result.ok) {
+    throw new Error(result.error ?? 'shell write failed')
+  }
+}
+
+/** 壳能不能把改动写回磁盘；不能时工作区只能当只读预览 */
+export const refreshFolderViaShell = async (): Promise<ShellFolder | null> => {
+  const shell = shellBridge()
+  if (!shell?.refreshWorkspace) {
+    return null
+  }
+  const raw = await shell.refreshWorkspace()
+  if (!raw) {
+    return null
+  }
+  return JSON.parse(raw) as ShellFolder
+}
+
+export type ShellTransferResult = {
+  ok: boolean
+  error?: string
+  files?: Record<string, string>
+}
+
+/** 壳里能不能导出/导入 */
+export const canTransferViaShell = () =>
+  typeof shellBridge()?.exportWorkspace === 'function' && typeof shellBridge()?.importWorkspace === 'function'
+
+/** 把工作区打包交给用户保存 */
+export const exportViaShell = async (files: Record<string, string>): Promise<ShellTransferResult> => {
+  const shell = shellBridge()
+  if (!shell?.exportWorkspace) {
+    throw new Error('shell export unsupported')
+  }
+  const raw = await shell.exportWorkspace(JSON.stringify(files))
+  if (!raw) {
+    throw new Error('shell export failed')
+  }
+  return JSON.parse(raw) as ShellTransferResult
+}
+
+/** 让用户选一个 zip 导入 */
+export const importViaShell = async (): Promise<ShellTransferResult> => {
+  const shell = shellBridge()
+  if (!shell?.importWorkspace) {
+    throw new Error('shell import unsupported')
+  }
+  const raw = await shell.importWorkspace()
+  if (!raw) {
+    throw new Error('shell import failed')
+  }
+  return JSON.parse(raw) as ShellTransferResult
 }
 
 export const pickDirectory = async (): Promise<FileSystemDirectoryHandle> => {

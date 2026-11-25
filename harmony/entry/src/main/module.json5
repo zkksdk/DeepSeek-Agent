@@ -56,6 +56,11 @@
           "abilities": ["EntryAbility"],
           "when": "inuse"
         }
+      },
+      {
+        // 让 picker 选的目录在一次授权后长期可用。
+        // 没有这条，应用退到后台 URI 就失效，每次重开都要重新选文件夹。
+        "name": "ohos.permission.FILE_ACCESS_PERSIST"
       }
     ]
   }

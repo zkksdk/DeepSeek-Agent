@@ -113,6 +113,7 @@ const recallMemoryTool = defineTool(
     const activeWorkspace = useWorkspace.getState().activeId
     const matched = useMemory
       .getState()
+      .list
       // 和 memoryPrompt 同样的作用域规则：别的项目的约定搜不出来
       .filter((item) => !item.workspaceId || item.workspaceId === activeWorkspace)
       .filter((item) => {

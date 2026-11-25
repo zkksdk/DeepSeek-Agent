@@ -81,7 +81,7 @@ export const MemorySetting = () => {
                 />
                 <div className={styles.memoryActions}>
                   <Button
-                    tone="ghost"
+                    variant="outlined"
                     onClick={() => {
                       setEditing(null)
                       setDraft('')
@@ -105,7 +105,7 @@ export const MemorySetting = () => {
                 <div className={styles.memoryBody}>{item.body}</div>
                 <div className={styles.memoryActions}>
                   <Button
-                    tone="ghost"
+                    variant="outlined"
                     onClick={() => {
                       setEditing(item.id)
                       setDraft(item.body)
@@ -113,7 +113,7 @@ export const MemorySetting = () => {
                   >
                     {t('memoryEdit')}
                   </Button>
-                  <Button tone="ghost" onClick={() => void remove(item.id)}>
+                  <Button variant="outlined" onClick={() => void remove(item.id)}>
                     {t('memoryDelete')}
                   </Button>
                 </div>

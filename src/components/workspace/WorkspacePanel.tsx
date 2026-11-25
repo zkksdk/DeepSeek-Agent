@@ -18,12 +18,12 @@ import {
   createBranch,
   discardFile,
   initWorkspace,
-  openLocalWorkspace,
+  exportWorkspace,
+  importWorkspace,
   refreshLocalWorkspace,
   setBranch,
   useWorkspace,
 } from '../../services/workspace/store.js'
-import { canPickDirectory } from '../../services/workspace/local.js'
 import { DiffViewer } from './DiffViewer.js'
 import { buildFileTree, type FileNode } from './fileTree.js'
 import {
@@ -134,6 +134,8 @@ export const WorkspacePanel = () => {
   const [branchOpen, setBranchOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [branchName, setBranchName] = useState('')
+  const [transferBusy, setTransferBusy] = useState(false)
+  const [transferMessage, setTransferMessage] = useState('')
   const branchRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -347,17 +349,35 @@ export const WorkspacePanel = () => {
         <button
           type="button"
           className={styles.openFolder}
-          disabled={loading || !canPickDirectory()}
-          title={canPickDirectory() ? t('workspaceOpenFolderHint') : t('workspaceUnsupported')}
-          onClick={() => void openLocalWorkspace()}
+          disabled={loading || transferBusy}
+          title={t('workspaceExportHint')}
+          onClick={async () => {
+            setTransferBusy(true)
+            const result = await exportWorkspace()
+            setTransferBusy(false)
+            setTransferMessage(
+              result.ok ? t('workspaceExportDone') : t('workspaceExportFailed') + ' ' + (result.error ?? '')
+            )
+          }}
         >
-          {t('workspaceOpenFolder')}
+          {t('workspaceExport')}
         </button>
-        {source === 'local' ? (
-          <button type="button" className={styles.openFolder} onClick={backToDemo}>
-            {t('workspaceBackDemo')}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={styles.openFolder}
+          disabled={loading || transferBusy}
+          title={t('workspaceImportHint')}
+          onClick={async () => {
+            setTransferBusy(true)
+            const result = await importWorkspace()
+            setTransferBusy(false)
+            setTransferMessage(
+              result.ok ? t('workspaceImportDone', { count: result.count ?? 0 }) : t('workspaceImportFailed')
+            )
+          }}
+        >
+          {t('workspaceImport')}
+        </button>
       </div>
 
       <div className={styles.body}>
@@ -389,7 +409,16 @@ export const WorkspacePanel = () => {
           </div>
           {error ? (
             <div className={styles.notice} role="alert">
-              {error === 'empty' ? t('workspaceEmpty') : t('workspaceOpenFailed')}
+              {error === 'empty'
+                ? t('workspaceEmpty')
+                : error === 'reselect'
+                  ? t('workspaceReselect')
+                  : t('workspaceOpenFailed')}
+            </div>
+          ) : null}
+          {transferMessage ? (
+            <div className={styles.notice} role="status">
+              {transferMessage}
             </div>
           ) : null}
           {truncated ? <div className={styles.notice}>{t('workspaceTruncated')}</div> : null}
