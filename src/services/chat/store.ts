@@ -26,6 +26,7 @@ import {
 } from './liveStats.js'
 import { noteContextUsage } from './contextUsage.js'
 import { goalsPrompt } from '../goals.js'
+import { memoryPrompt } from '../memory/store.js'
 import {
   clearAllDrafts,
   clearDraft,
@@ -60,7 +61,7 @@ const MODEL: ChatModel = 'deepseek-flash'
  */
 const systemPrompt = () => {
   const base = useSettings.getState().systemPrompt.trim() || defaultSystemPrompt()
-  return `${base}${goalsPrompt()}`
+  return `${base}${goalsPrompt()}${memoryPrompt()}`
 }
 /** 保留最近打开的详情；当前会话、生成中及尚未成功保存的会话不淘汰。 */
 const SESSION_CACHE_LIMIT = 5

@@ -806,3 +806,89 @@ body[data-ds-dark-theme] .slider input[type='range'] {
   color: var(--text-primary, #eaeaea);
   border-color: var(--text-tertiary, #555);
 }
+
+
+/* ===== 记忆面板 ===== */
+/* 记忆是模型自己写的，用户要能逐条看见、改、删，所以每条都摊开显示 */
+
+.memoryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.memoryHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.memoryType {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(57, 100, 254, 0.14);
+  color: var(--dsw-alias-brand-primary);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.memoryTitle {
+  flex: 1;
+  min-width: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.memoryHits {
+  flex-shrink: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+}
+
+.memoryBody {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.memoryActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.memoryEdit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memoryTextarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 9px 11px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.sectionEmpty {
+  padding: 28px 14px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  text-align: center;
+}

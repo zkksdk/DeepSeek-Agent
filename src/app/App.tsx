@@ -31,6 +31,7 @@ import { showToast } from '../components/base/toastState.js'
 import { onUploadNotice } from '../services/attachments.js'
 import { initAgent } from '../services/agent/index.js'
 import { initWorkspace } from '../services/workspace/store.js'
+import { loadAll as loadMemories } from '../services/memory/store.js'
 import { Button } from '../components/base/Button.js'
 import { stopReadAloud } from '../services/speech/readAloud.js'
 import { CollapsedSider } from '../components/sider/CollapsedSider.js'
@@ -112,6 +113,8 @@ export const App = () => {
     initAgent()
     // 工作区列表在输入框选择器里就要能读到，不等面板打开
     initWorkspace()
+    // 长期记忆的索引要赶在第一轮请求之前就位
+    void loadMemories()
   }, [])
 
   return (

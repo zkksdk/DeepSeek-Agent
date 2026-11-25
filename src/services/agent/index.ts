@@ -6,6 +6,7 @@ import { agentTools } from './tools/agentTools.js'
 import { askUserTools } from './tools/askUserTool.js'
 import { workspaceTools } from './tools/workspaceTools.js'
 import { customToolTools, registerCustomTools } from './tools/customTools.js'
+import { memoryTools } from './tools/memoryTools.js'
 import { initExtensionBridge } from './extension.js'
 import { initDesktop } from './desktop/store.js'
 import { connectEnabledServers } from './mcp/store.js'
@@ -29,6 +30,7 @@ export const initAgent = () => {
     ...askUserTools,
     ...workspaceTools,
     ...customToolTools,
+    ...memoryTools,
   ])
   // 上次创建的组合工具跟着回来
   registerCustomTools()

@@ -56,6 +56,7 @@ import {
 import { GithubSetting } from './GithubSetting.js'
 import { SettingCell, ToggleCell } from './SettingCell.js'
 import { UsageSetting } from './UsageSetting.js'
+import { MemorySetting } from './MemorySetting.js'
 import { WorkspaceSetting } from './WorkspaceSetting.js'
 import { Button } from '../base/Button.js'
 import { Modal } from '../base/Modal.js'
@@ -84,6 +85,7 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
     icon: <IconSettingsOutline16 />,
   },
   { value: 'agent', label: 'settingsGroupAgent', icon: <IconSpark /> },
+  { value: 'memory', label: 'settingsGroupMemory', icon: <IconSpark /> },
   { value: 'workspace', label: 'settingsGroupWorkspace', icon: <IconFolder /> },
   { value: 'data', label: 'settingsGroupData', icon: <IconDataOutline16 /> },
 ]
@@ -162,7 +164,9 @@ const SettingsContent = () => {
               <SamplingSetting />
               <MockAgentSetting />
             </>
-          ) : section === 'workspace' ? (
+          ) : section === 'memory' ? (
+          <MemorySetting />
+        ) : section === 'workspace' ? (
             <WorkspaceSetting />
           ) : (
             <>

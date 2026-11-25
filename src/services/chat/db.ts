@@ -2,7 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { toSessionSummary, type Session, type SessionSummary } from './types.js'
 
 /** IndexedDB 存储结构版本；新增或调整存储、索引时递增。 */
-const DB_VERSION = 12
+const DB_VERSION = 13
 
 /** 文件原件按附件的本地 id 存储，所有引用同一 id 的消息共用一份；用于缩略图、打开查看，以及没有 serverId 时补传。 */
 export type StoredFile = {
@@ -31,6 +31,28 @@ export type StoredArtifact = {
   sessionId?: string
 }
 
+/**
+ * 一条长期记忆。
+ *
+ * 分层是为了省 token：索引里只放 title（一行），正文 body 按需读。
+ * Claude Code 的 auto memory 就是这个路子，MEMORY.md 只加载前 200 行。
+ */
+export type StoredMemory = {
+  id: string
+  /** user=用户偏好 / feedback=被纠正过的事 / project=项目决策 / reference=外部信息来源 */
+  type: 'user' | 'feedback' | 'project' | 'reference'
+  /** 一行摘要，直接进 system prompt */
+  title: string
+  /** 详情，按需读取 */
+  body: string
+  createdAt: number
+  updatedAt: number
+  /** 被召回几次；淘汰时优先丢掉从没被用过的 */
+  hits: number
+  /** 指定工作区 id 表示只在这个工作区生效；空表示全局 */
+  workspaceId?: string
+}
+
 interface ChatDB extends DBSchema {
   /** 当前使用的会话，界面读写都在这里 */
   sessions: { key: string; value: Session }
@@ -49,6 +71,8 @@ interface ChatDB extends DBSchema {
   filesStaging: { key: string; value: StoredFile }
   /** 工具产物（文本、图片、二进制），按 id 引用 */
   artifacts: { key: string; value: StoredArtifact; indexes: { sessionId: string } }
+  /** 长期记忆；跨会话保留，索引部分注入 system prompt */
+  memories: { key: string; value: StoredMemory; indexes: { type: string } }
 }
 
 let dbPromise: Promise<IDBPDatabase<ChatDB>> | null = null
@@ -91,6 +115,10 @@ const getDB = () =>
       if (!db.objectStoreNames.contains('artifacts')) {
         const artifacts = db.createObjectStore('artifacts', { keyPath: 'id' })
         artifacts.createIndex('sessionId', 'sessionId')
+      }
+      if (!db.objectStoreNames.contains('memories')) {
+        const memories = db.createObjectStore('memories', { keyPath: 'id' })
+        memories.createIndex('type', 'type')
       }
     },
   }).catch((error: unknown) => {
@@ -288,4 +316,27 @@ export const deleteSessionArtifacts = async (sessionId: string): Promise<void> =
   const tx = db.transaction('artifacts', 'readwrite')
   const keys = await tx.store.index('sessionId').getAllKeys(sessionId)
   await Promise.all([...keys.map((key) => tx.store.delete(key)), tx.done])
+}
+
+
+/** 读出全部记忆；索引组装和设置页都用它 */
+export const loadMemories = async (): Promise<StoredMemory[]> =>
+  (await getDB()).getAll('memories')
+
+export const saveMemory = async (memory: StoredMemory): Promise<void> => {
+  await (await getDB()).put('memories', memory)
+}
+
+export const deleteMemory = async (id: string): Promise<void> => {
+  await (await getDB()).delete('memories', id)
+}
+
+/** 召回时记一笔，淘汰算法据此判断哪条真被用过 */
+export const touchMemory = async (id: string): Promise<void> => {
+  const db = await getDB()
+  const memory = await db.get('memories', id)
+  if (memory) {
+    memory.hits += 1
+    await db.put('memories', memory)
+  }
 }
