@@ -29,12 +29,12 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const sessions = useChatStore((state) => state.sessions)
   const activeId = useChatStore((state) => state.activeId)
   const [now, setNow] = useState(Date.now)
-  // 聊天会话只放没有归属工作区的会话——否则和工作区 tab 内容一模一样
-  const chatOnly = useMemo(() => sessions.filter((item) => !item.workspaceId), [sessions])
+  // 聊天会话 = mode 为 chat 的那些；工作会话在另一个 tab
+  const chatOnly = useMemo(() => sessions.filter((item) => item.mode === 'chat'), [sessions])
   const groups = useMemo(() => groupSessions(chatOnly, now, t), [chatOnly, now, t])
   const entries = useWorkspace((state) => state.entries)
-  // 只归有工作区的会话；没归属的留给「聊天会话」那个 tab，两边不重叠
-  const assigned = useMemo(() => sessions.filter((item) => item.workspaceId), [sessions])
+  // 工作区 tab 收 mode 为 work 的会话；对话类留给聊天会话 tab
+  const assigned = useMemo(() => sessions.filter((item) => item.mode === 'work'), [sessions])
   const workspaceGroups = useMemo(
     () => groupSessionsByWorkspace(assigned, entries, t('workspaceUngrouped')),
     [assigned, entries, t]
