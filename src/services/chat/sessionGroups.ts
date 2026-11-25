@@ -49,23 +49,27 @@ export const groupSessionsByWorkspace = (
   workspaces: { id: string; name: string }[],
   ungroupedLabel: string
 ): WorkspaceGroup[] => {
-  const byId = new Map(workspaces.map((item) => [item.id, item.name]))
-  const groups = new Map<string, WorkspaceGroup>()
+  // 以工作区列表为准：新建的空工作区也要显示出来，不能等到有会话才出现
+  const groups: WorkspaceGroup[] = workspaces.map((item) => ({
+    key: item.id,
+    name: item.name,
+    sessions: [],
+  }))
+  const byId = new Map(groups.map((group) => [group.key, group]))
+  const orphan = { key: '__none__', name: ungroupedLabel, sessions: [] as SessionSummary[] }
 
   for (const session of sessions) {
     const id = session.workspaceId ?? '__none__'
-    let group = groups.get(id)
-    if (!group) {
-      group = { key: id, name: byId.get(id) ?? ungroupedLabel, sessions: [] }
-      groups.set(id, group)
-    }
+    const group = byId.get(id) ?? orphan
     group.sessions.push(session)
   }
 
-  // 有名字的工作区排前面，「未分组」垫底
-  return [...groups.values()].sort((a, b) => {
+  const result = orphan.sessions.length > 0 ? [...groups, orphan] : groups
+  // 有会话的排前面，空的往后放，同组内按名字
+  return result.sort((a, b) => {
     if (a.key === '__none__') return 1
     if (b.key === '__none__') return -1
+    if (a.sessions.length !== b.sessions.length) return b.sessions.length - a.sessions.length
     return a.name.localeCompare(b.name)
   })
 }

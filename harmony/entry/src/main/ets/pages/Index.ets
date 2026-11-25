@@ -226,6 +226,8 @@ class ShellBridge {
    * 重启后提示用户重选一次（拿不到目录句柄是 ArkWeb 的硬限制）。
    */
   private workspaceRootUri: string = ''
+  /** 当前工作区 id；空串表示用老的单工作区目录，多工作区时落到 workspace/workspaces/<id> */
+  private activeWorkspaceId: string = ''
 
   /**
    * 在内嵌浏览器里打开页面并执行脚本。
@@ -884,9 +886,26 @@ class ShellBridge {
     }
   }
 
+  /**
+   * 切换当前工作区。
+   *
+   * 多工作区共用一套桥接方法，靠这个 id 决定落到哪个目录——
+   * 不然得给十几个方法都加参数。
+   */
+  setActiveWorkspace(id: string): string {
+    this.activeWorkspaceId = id
+    this.sandboxFilesDir()
+    const done: ShellWriteResult = { ok: true }
+    return JSON.stringify(done)
+  }
+
   /** 沙箱工作区根目录，不存在就建 */
   sandboxWorkspaceDir(): string {
-    const dir: string = this.context.filesDir + '/' + SANDBOX_WS_DIR
+    const base: string = this.context.filesDir + '/' + SANDBOX_WS_DIR
+    let dir: string = base
+    if (this.activeWorkspaceId.length > 0) {
+      dir = base + '/workspaces/' + this.activeWorkspaceId
+    }
     // 不用 accessSync 判断：路径不存在时它可能抛错而不是返回 false，
     // 一旦抛出去后面的 mkdir 就永远执行不到。mkdirSync 带 recursive 时对已存在目录是幂等的。
     this.ensureDir(dir)
@@ -1877,7 +1896,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree', 'sandboxInfo', 'clearSandbox', 'listSandboxDir', 'readSandboxFile'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree', 'sandboxInfo', 'clearSandbox', 'setActiveWorkspace', 'listSandboxDir', 'readSandboxFile'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {

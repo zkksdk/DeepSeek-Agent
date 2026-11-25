@@ -14,6 +14,7 @@ import {
   exportViaShell,
   importViaShell,
   canUseSandboxWorkspace,
+  setActiveSandboxWorkspace,
   deleteSandboxFile,
   readSandboxState,
   readSandboxTree,
@@ -175,13 +176,20 @@ export const useWorkspace = create<WorkspaceStore>(() => ({
 /** 多工作区列表（输入框选择器读它） */
 export const useWorkspaceList = () => useWorkspace((state) => state.entries)
 
-type SavedList = { version: number; activeId: string | null; local: { id: string; name: string }[] }
+type SavedWorkspace = { id: string; name: string; root?: string }
+type SavedList = {
+  version: number
+  activeId: string | null
+  local: SavedWorkspace[]
+  /** 用户自建的工作区；演示仓库不进来，它永远存在 */
+  custom: SavedWorkspace[]
+}
 
 const readSavedList = (): SavedList => {
   try {
     const raw = localStorage.getItem(LIST_KEY)
     if (!raw) {
-      return { version: STORAGE_VERSION, activeId: DEMO_ID, local: [] }
+      return { version: STORAGE_VERSION, activeId: DEMO_ID, local: [], custom: [] }
     }
     const saved = JSON.parse(raw) as Partial<SavedList>
     return {
@@ -189,13 +197,19 @@ const readSavedList = (): SavedList => {
       activeId: typeof saved.activeId === 'string' ? saved.activeId : DEMO_ID,
       local: Array.isArray(saved.local)
         ? saved.local.filter(
-            (item): item is { id: string; name: string } =>
+            (item): item is SavedWorkspace =>
+              typeof item?.id === 'string' && typeof item?.name === 'string'
+          )
+        : [],
+      custom: Array.isArray((saved as Partial<SavedList>).custom)
+        ? (saved as SavedList).custom.filter(
+            (item): item is SavedWorkspace =>
               typeof item?.id === 'string' && typeof item?.name === 'string'
           )
         : [],
     }
   } catch {
-    return { version: STORAGE_VERSION, activeId: DEMO_ID, local: [] }
+    return { version: STORAGE_VERSION, activeId: DEMO_ID, local: [], custom: [] }
   }
 }
 
@@ -284,6 +298,9 @@ const persistList = () => {
         local: state.entries
           .filter((entry) => entry.source === 'local')
           .map((entry) => ({ id: entry.id, name: entry.name })),
+        custom: state.entries
+          .filter((entry) => entry.source === 'demo' && entry.id !== DEMO_ID)
+          .map((entry) => ({ id: entry.id, name: entry.name, root: entry.root })),
       })
     )
   } catch {
@@ -308,6 +325,10 @@ export const setActiveWorkspace = (id: string) => {
   }
   useWorkspace.setState({ activeId: id, ...mirror(entry), error: null })
   persistList()
+  // 通知壳切到对应目录，多工作区各自独立
+  if (canUseSandboxWorkspace()) {
+    void setActiveSandboxWorkspace(id)
+  }
   return true
 }
 
@@ -447,6 +468,26 @@ const restoreLocalWorkspaces = async () => {
     } catch {
       // 读不到目录时跳过，用户可以在选择器里移除
     }
+  }
+
+  // 用户自建的工作区：内容是空的或从沙箱读，重启后按 id 重建条目
+  for (const item of saved.custom) {
+    const restored: WorkspaceEntry = {
+      id: item.id,
+      name: item.name,
+      source: 'demo',
+      root: item.root ?? `workspaces/${item.id}`,
+      branch: 'main',
+      branches: ['main'],
+      files: {},
+      base: {},
+      truncated: false,
+    }
+    useWorkspace.setState((state) => ({
+      entries: state.entries.some((e) => e.id === item.id)
+        ? state.entries
+        : [...state.entries, restored],
+    }))
   }
 }
 
@@ -712,6 +753,68 @@ export const refreshLocalWorkspace = async () => {
   } catch {
     useWorkspace.setState({ loading: false, error: 'open' })
   }
+}
+
+/** 新建一个空工作区：沙箱里对应一个独立目录，从空白开始 */
+export const createWorkspace = (name: string): { ok: boolean; error?: string; id?: string } => {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    return { ok: false, error: 'empty' }
+  }
+  const state = useWorkspace.getState()
+  if (state.entries.some((item) => item.name === trimmed)) {
+    return { ok: false, error: 'exists' }
+  }
+  const id = `ws_${Date.now().toString(36)}`
+  const entry: WorkspaceEntry = {
+    id,
+    name: trimmed,
+    source: 'demo',
+    branch: 'main',
+    branches: ['main'],
+    base: {},
+    files: {},
+    root: `workspaces/${id}`,
+    truncated: false,
+  }
+  useWorkspace.setState({
+    entries: [...state.entries, entry],
+    activeId: id,
+    branch: 'main',
+    branches: ['main'],
+    base: {},
+    files: {},
+    source: 'demo',
+    name: trimmed,
+    error: null,
+  })
+  persistList()
+  // 切到新目录，并清空它（新建即空白）
+  if (canUseSandboxWorkspace()) {
+    void (async () => {
+      await setActiveSandboxWorkspace(id)
+      await replaceSandboxTree({})
+      await writeSandboxState(JSON.stringify({ branch: 'main', branchData: { main: { head: {}, worktree: {} } } }))
+    })()
+  }
+  return { ok: true, id }
+}
+
+/** 重命名工作区 */
+export const renameWorkspace = (id: string, name: string) => {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    return false
+  }
+  const state = useWorkspace.getState()
+  if (!state.entries.some((item) => item.id === id)) {
+    return false
+  }
+  const entries = state.entries.map((item) => (item.id === id ? { ...item, name: trimmed } : item))
+  const active = entries.find((item) => item.id === state.activeId)
+  useWorkspace.setState({ entries, ...(active ? { name: active.name } : {}) })
+  persistList()
+  return true
 }
 
 /** 移除工作区：本地目录同时清掉句柄，演示仓库只重置文件 */

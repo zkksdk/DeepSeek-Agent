@@ -1,5 +1,4 @@
 import type { zh } from './zh.js'
-
 export const en = {
   sessionModeToggle: 'Toggle session mode',
   browserChipExpand: 'Expand',
@@ -553,6 +552,11 @@ export const en = {
   workspacePickerNone: 'None',
   workspacePickerAdd: 'Open folder…',
   workspaceOpenPanel: 'Open workspace panel',
+  workspaceManage: 'Manage',
+  workspaceShowMore: 'Show {count} more',
+  workspaceNewName: 'New workspace name',
+  workspaceExists: 'A workspace with this name already exists',
+  workspaceInvalid: 'Name cannot be empty',
   workspaceUngrouped: 'Ungrouped',
   workspaceSectionTitle: 'Workspaces',
   workspaceChatSectionTitle: 'Chats',

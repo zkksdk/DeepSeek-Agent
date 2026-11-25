@@ -28,6 +28,8 @@ type ShellPicker = {
   deleteSandboxFile?: (path: string) => Promise<string>
   /** 用完整快照重建沙箱工作树 */
   replaceWorkspaceTree?: (filesJson: string) => Promise<string>
+  /** 切换当前工作区 */
+  setActiveWorkspace?: (id: string) => Promise<string>
   /** 沙箱现状：路径、文件数、字节数 */
   sandboxInfo?: () => Promise<string>
   /** 清空沙箱工作树 */
@@ -193,6 +195,17 @@ export const replaceSandboxTree = async (files: Record<string, string>): Promise
 }
 
 /** 读/写沙箱工作区状态 */
+/** 切换壳当前使用的工作区目录 */
+export const setActiveSandboxWorkspace = async (id: string) => {
+  const shell = shellBridge()
+  if (!shell?.setActiveWorkspace) return
+  try {
+    await shell.setActiveWorkspace(id)
+  } catch {
+    // 壳不支持就维持单工作区
+  }
+}
+
 export type SandboxInfo = { ok: boolean; path?: string; count?: number; bytes?: number; error?: string }
 
 /** 读沙箱现状 */
