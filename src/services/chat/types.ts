@@ -179,13 +179,21 @@ export type Session = {
    */
   mode?: SessionMode
   rootMessageId?: string | null
+  /**
+   * 会话所属的工作区 id。
+   *
+   * 侧栏按工作区分组时用它归类；旧会话没有这个字段，归到「未分组」。
+   */
+  workspaceId?: string | null
 }
 
 /** 会话模式：对话（纯聊天）/ 工作（允许模型调工具） */
 export type SessionMode = 'chat' | 'work'
 
 /** 会话列表元数据；消息只在打开会话时加载。 */
-export type SessionSummary = Pick<Session, 'id' | 'title' | 'createdAt' | 'updatedAt' | 'mode'>
+export type SessionSummary = Pick<Session, 'id' | 'title' | 'createdAt' | 'updatedAt' | 'mode'> & {
+  workspaceId?: string | null
+}
 
 /** 显式提取字段，避免将完整会话的消息带进列表。 */
 export const toSessionSummary = (session: SessionSummary): SessionSummary => ({
@@ -194,4 +202,5 @@ export const toSessionSummary = (session: SessionSummary): SessionSummary => ({
   createdAt: session.createdAt,
   updatedAt: session.updatedAt,
   mode: session.mode,
+  workspaceId: session.workspaceId,
 })

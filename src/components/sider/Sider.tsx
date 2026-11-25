@@ -2,14 +2,15 @@ import clsx from 'clsx'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { IconPanelLeftOutline16, IconSettingsOutline16, NewChatIcon } from '../base/icons.js'
-import { IconSpark } from '../agent/ToolIcons.js'
+import { IconFolder, IconSpark } from '../agent/ToolIcons.js'
 import { openAgentPanel } from '../agent/agentPanelState.js'
 import { isExtensionAvailable, subscribeExtension } from '../../services/agent/extension.js'
 import { useDesktop } from '../../services/agent/desktop/store.js'
 import { useMcp } from '../../services/agent/mcp/store.js'
 import { setSiderCollapsed } from '../../services/settings.js'
-import { groupSessions } from '../../services/chat/sessionGroups.js'
+import { groupSessions, groupSessionsByWorkspace } from '../../services/chat/sessionGroups.js'
 import { newChat, removeSession, useChatStore } from '../../services/chat/store.js'
+import { useWorkspace } from '../../services/workspace/store.js'
 import type { SessionSummary } from '../../services/chat/types.js'
 import { Button } from '../base/Button.js'
 import { IconButton } from '../base/IconButton.js'
@@ -29,6 +30,11 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const activeId = useChatStore((state) => state.activeId)
   const [now, setNow] = useState(Date.now)
   const groups = useMemo(() => groupSessions(sessions, now, t), [sessions, now, t])
+  const entries = useWorkspace((state) => state.entries)
+  const workspaceGroups = useMemo(
+    () => groupSessionsByWorkspace(sessions, entries, t('workspaceUngrouped')),
+    [sessions, entries, t]
+  )
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
   const [deletePending, setDeletePending] = useState(false)
   const desktopReady = useDesktop((state) => state.status === 'connected')
@@ -95,12 +101,36 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
       </button>
       <div className={styles.listWrap}>
         <div className={styles.list}>
+          {workspaceGroups.length > 0 ? (
+            <div className={styles.section}>
+              <div className={styles.sectionHeader}>{t('workspaceSectionTitle')}</div>
+              {workspaceGroups.map((group) => (
+                <div key={group.key} className={styles.workspaceGroup}>
+                  <div className={styles.workspaceGroupHead}>
+                    <span className={styles.workspaceGroupIcon}>
+                      <IconFolder />
+                    </span>
+                    <span className={styles.workspaceGroupName}>{group.name}</span>
+                    <span className={styles.workspaceGroupCount}>{group.sessions.length}</span>
+                  </div>
+                  {group.sessions.map((session) => (
+                    <SessionItem
+                      key={session.id}
+                      session={session}
+                      active={session.id === activeId}
+                      onDelete={() => setDeleting(session)}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : null}
           {groups.map((group) => (
             <div key={group.key} className={styles.section}>
               <div className={styles.sectionHeader}>{group.label}</div>
               {group.sessions.map((session) => (
                 <SessionItem
-                  key={session.id}
+                  key={`chat-${session.id}`}
                   session={session}
                   active={session.id === activeId}
                   onDelete={() => setDeleting(session)}

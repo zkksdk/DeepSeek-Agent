@@ -370,3 +370,48 @@ body[data-ds-dark-theme] .sider[data-glass] .bottom {
     padding: 6px 8px 0;
   }
 }
+
+
+/* 工作区分组：目录名 + 会话数，会话挂在下面 */
+.workspaceGroup {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2px;
+}
+
+.workspaceGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 3px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.workspaceGroupIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+}
+
+.workspaceGroupName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceGroupCount {
+  flex-shrink: 0;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 10px;
+  text-align: center;
+}

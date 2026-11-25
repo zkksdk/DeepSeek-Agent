@@ -17,6 +17,7 @@ import { clearApprovals } from '../agent/approval.js'
 import { clearUserPrompts } from '../agent/userPrompt.js'
 import { mockStreamMessage } from '../agent/mock.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
+import { useWorkspace } from '../workspace/store.js'
 import * as db from './db.js'
 import {
   beginLiveRun,
@@ -654,6 +655,8 @@ export const sendMessage = (targetSessionId: string | null) => {
       rootMessageId: null,
       // 新会话继承当前的全局模式偏好（设置里那个开关），之后可以在会话内单独切
       mode: useSettings.getState().agentEnabled ? 'work' : 'chat',
+      // 记下开这个会话时用的是哪个工作区，侧栏按工作区分组靠它
+      workspaceId: useWorkspace.getState().activeId ?? null,
     }
     sessionId = session.id
     touchSession(session.id)
