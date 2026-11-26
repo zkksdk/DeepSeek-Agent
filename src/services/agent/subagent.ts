@@ -18,7 +18,7 @@ const SUBAGENT_MODEL = 'deepseek-flash'
 /** 回传给主 Agent 的结果上限 */
 const MAX_REPORT = 6000
 /** 单个子 Agent 最多带多少个工具，太多会稀释注意力 */
-const MAX_TOOLS = 10
+const MAX_TOOLS = 12
 /** 子 Agent 不暴露编排类工具，避免递归；也不允许反问用户，卡住时只能自己决定 */
 const EXCLUDED = new Set([
   'spawn_subagent',
@@ -27,6 +27,9 @@ const EXCLUDED = new Set([
   'show_widget',
   'ask_user',
   'workspace_write_file',
+  // 改/删文件同样是写操作，子 Agent 只做只读调研
+  'workspace_edit_file',
+  'workspace_delete_file',
   'workspace_switch_branch',
 ])
 

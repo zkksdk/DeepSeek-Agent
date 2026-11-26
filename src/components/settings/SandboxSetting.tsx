@@ -9,6 +9,14 @@ import {
   type SandboxInfo,
 } from '../../services/workspace/local.js'
 import { exportWorkspace, importWorkspace, unarchiveWorkspace, useWorkspace } from '../../services/workspace/store.js'
+import {
+  canUseNative,
+  getNativeInfo,
+  getNativeNetwork,
+  showNativeToast,
+  type NativeInfo,
+  type NativeNetwork,
+} from '../../services/workspace/native.js'
 import { Button } from '../base/Button.js'
 import styles from './Settings.module.css'
 
@@ -37,6 +45,17 @@ export const SandboxSetting = () => {
   const files = useWorkspace((state) => state.files)
   const workspaces = useWorkspace((state) => state.entries)
   const archivedWorkspaces = workspaces.filter((item) => item.archived)
+  // 原生桥：设备型号、屏幕、网络。浏览器里跑这个页面时都是 null，不显示即可。
+  const [nativeInfo, setNativeInfo] = useState<NativeInfo | null>(null)
+  const [nativeNet, setNativeNet] = useState<NativeNetwork | null>(null)
+
+  useEffect(() => {
+    if (!canUseNative()) {
+      return
+    }
+    setNativeInfo(getNativeInfo())
+    setNativeNet(getNativeNetwork())
+  }, [])
 
   const [info, setInfo] = useState<SandboxInfo | null>(null)
   const [cwd, setCwd] = useState('')
@@ -263,6 +282,50 @@ export const SandboxSetting = () => {
           </div>
         )}
       </div>
+
+      {nativeInfo === null ? null : (
+        <div className={styles.cell}>
+          <div className={styles.promptHead}>
+            <div className={styles.text}>
+              <div className={styles.label}>{t('sandboxDevice')}</div>
+              <div className={styles.description}>
+                {t('sandboxDeviceHint')}
+              </div>
+            </div>
+          </div>
+          <div className={styles.sandboxList}>
+            <div className={styles.sandboxRow}>
+              <span className={styles.sandboxName}>{t('sandboxDeviceModel')}</span>
+              <span className={styles.sandboxMeta}>{nativeInfo.brandModel}</span>
+            </div>
+            <div className={styles.sandboxRow}>
+              <span className={styles.sandboxName}>{t('sandboxDeviceScreen')}</span>
+              <span className={styles.sandboxMeta}>
+                {nativeInfo.width} × {nativeInfo.height}
+              </span>
+            </div>
+            <div className={styles.sandboxRow}>
+              <span className={styles.sandboxName}>{t('sandboxDeviceNetwork')}</span>
+              <span className={styles.sandboxMeta}>
+                {nativeNet?.available
+                  ? nativeNet.metered
+                    ? t('sandboxNetworkMetered')
+                    : t('sandboxNetworkWifi')
+                  : t('sandboxNetworkOffline')}
+              </span>
+            </div>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <Button
+              variant="outlined"
+              size="s"
+              onClick={() => showNativeToast(t('sandboxDeviceToast'))}
+            >
+              {t('sandboxDeviceTestToast')}
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   )
 }

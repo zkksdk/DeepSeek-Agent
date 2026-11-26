@@ -1,6 +1,9 @@
 {
   "modelVersion": "5.0.0",
   "description": "chat-demo 的鸿蒙手机版壳工程",
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "@pura/harmony-utils": "^1.4.2"
+  },
+  "devDependencies": {},
+  "dynamicDependencies": {}
 }

@@ -2,6 +2,7 @@ import { defineTool, fail, objectSchema, ok, str, clip } from '../toolKit.js'
 import { diffFile, diffWorkspace, unifiedDiff } from '../../workspace/diff.js'
 import {
   createBranch,
+  deleteWorkspaceFile,
   setBranch,
   workspaceSnapshot,
   writeWorkspaceFile,
@@ -144,6 +145,150 @@ export const workspaceTools: RegisteredTool[] = [
         `当前分支 ${after.branch} 共 ${diffWorkspace(after.base, after.files).length} 个文件有改动。`,
       ]
       return ok(lines.join('\n'), { meta: { path, additions: diff.additions, deletions: diff.deletions } })
+    }
+  ),
+
+  defineTool(
+    {
+      name: 'workspace_delete_file',
+      label: '删除工作区文件',
+      description:
+        '从工作区里彻底删掉一个文件（不是清空内容）。会同步删掉沙箱里的实体，文件从面板和磁盘上一起消失；删除前需要用户确认。',
+      inputSchema: objectSchema(
+        {
+          path: { type: 'string', description: '相对路径，例如 test/rw-check.md' },
+        },
+        ['path']
+      ),
+      risk: 'write',
+      requiresApproval: true,
+      icon: 'file',
+    },
+    async (input, context: ToolContext) => {
+      const snapshot = snapshotOrFail()
+      if (!snapshot) {
+        return fail('工作区还没有打开。')
+      }
+      const path = safePath(input)
+      if (!path) {
+        return fail('路径不合法，请传相对路径，不能包含 ..')
+      }
+      if (!snapshot.writable) {
+        return fail('当前工作区不可写。')
+      }
+      context.progress(`删除 ${path}…`)
+      const deleted = await deleteWorkspaceFile(path)
+      if (!deleted) {
+        return fail(`工作区里没有这个文件：${path}`)
+      }
+      const after = workspaceSnapshot()
+      const remaining = after ? diffWorkspace(after.base, after.files).length : 0
+      return ok(`已删除 ${path}。当前还有 ${remaining} 个文件有改动。`)
+    }
+  ),
+
+  defineTool(
+    {
+      name: 'workspace_edit_file',
+      label: '编辑工作区文件',
+      description:
+        '把文件里的某段文本替换掉，不用整篇重写。old_string 必须在文件里唯一，否则会拒绝执行——这样可以避免改错地方。改一行就用它，别用 workspace_write_file 覆盖整篇。',
+      inputSchema: objectSchema(
+        {
+          path: { type: 'string', description: '相对路径，例如 src/agent/loop.ts' },
+          old_string: { type: 'string', description: '要被替换的原文，必须唯一' },
+          new_string: { type: 'string', description: '替换后的文本，传空字符串表示删除这段' },
+          replace_all: { type: 'boolean', description: '为 true 时替换全部匹配（默认 false，要求唯一）' },
+        },
+        ['path', 'old_string', 'new_string']
+      ),
+      risk: 'write',
+      requiresApproval: true,
+      icon: 'file',
+    },
+    async (input, context: ToolContext) => {
+      const snapshot = snapshotOrFail()
+      if (!snapshot) {
+        return fail('工作区还没有打开。')
+      }
+      const path = safePath(input)
+      if (!path) {
+        return fail('路径不合法，请传相对路径，不能包含 ..')
+      }
+      if (!snapshot.writable) {
+        return fail('当前工作区不可写。')
+      }
+      const oldText = str(input, 'old_string')
+      const newText = str(input, 'new_string')
+      const replaceAll = input.replace_all === true
+      if (!oldText) {
+        return fail('old_string 不能为空。')
+      }
+      const current = snapshot.files[path]
+      if (current === undefined) {
+        return fail(`文件不存在：${path}。新建文件请用 workspace_write_file。`)
+      }
+      const hits = current.split(oldText).length - 1
+      if (hits === 0) {
+        return fail(`在 ${path} 里没找到这段文本，先读一遍确认原文。`)
+      }
+      if (hits > 1 && !replaceAll) {
+        return fail(`这段文本在 ${path} 里出现了 ${hits} 次，无法确定改哪一处。把 old_string 写长一点带上上下文，或传 replace_all。`)
+      }
+      const next = replaceAll
+        ? current.split(oldText).join(newText)
+        : current.replace(oldText, () => newText)
+      context.progress(`编辑 ${path}…`)
+      await writeWorkspaceFile(path, next)
+      const diff = diffFile(path, snapshot.base, { ...snapshot.files, [path]: next })
+      return ok(`已修改 ${path}（${hits} 处）。累计 +${diff.additions} −${diff.deletions}。`)
+    }
+  ),
+
+  defineTool(
+    {
+      name: 'workspace_search',
+      label: '搜索工作区内容',
+      description:
+        '在工作区的文件内容里搜文本，返回命中的文件、行号和那一行。想知道某个函数/字符串在哪个文件里时先搜一下，比挨个读快得多。',
+      inputSchema: objectSchema(
+        {
+          query: { type: 'string', description: '要搜的文本，普通子串匹配' },
+          path_prefix: { type: 'string', description: '可选，只看这个目录下的文件' },
+        },
+        ['query']
+      ),
+      risk: 'safe',
+      icon: 'search',
+    },
+    async (input) => {
+      const snapshot = snapshotOrFail()
+      if (!snapshot) {
+        return fail('工作区还没有打开。')
+      }
+      const query = str(input, 'query')
+      if (!query) {
+        return fail('query 不能为空。')
+      }
+      const prefix = str(input, 'path_prefix').trim()
+      const rows: string[] = []
+      for (const [filePath, content] of Object.entries(snapshot.files)) {
+        if (prefix && !filePath.startsWith(prefix)) {
+          continue
+        }
+        const fileLines = content.split(/\r?\n/)
+        fileLines.forEach((line, index) => {
+          if (line.includes(query)) {
+            rows.push(`${filePath}:${index + 1}: ${clip(line.trim(), 140)}`)
+          }
+        })
+      }
+      if (rows.length === 0) {
+        return ok(`没有文件包含「${query}」。`)
+      }
+      const head = rows.slice(0, 60).join('\n')
+      const tail = rows.length > 60 ? `\n…还有 ${rows.length - 60} 处` : ''
+      return ok(`${rows.length} 处命中：\n${head}${tail}`)
     }
   ),
 

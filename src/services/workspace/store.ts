@@ -668,6 +668,42 @@ export const discardFile = async (path: string) => {
   }
 }
 
+/**
+ * 真正删掉一个文件：从工作树里移除，并同步删掉沙箱里的实体。
+ *
+ * 和 discardFile 的区别：discardFile 是「回到基线」，新文件会回到不存在，
+ * 但基线里本来就有的文件只是恢复内容、不会消失。这里是直接抹掉路径。
+ */
+export const deleteWorkspaceFile = async (path: string): Promise<boolean> => {
+  const state = useWorkspace.getState()
+  const entry = state.entries.find((item) => item.id === state.activeId)
+  if (!entry) {
+    return false
+  }
+  if (entry.source === 'demo') {
+    const data = demoBranchData(entry.branch)
+    if (!(path in data.worktree)) {
+      return false
+    }
+    Reflect.deleteProperty(data.worktree, path)
+    persistDemo()
+    updateEntry(entry.id, (item) => ({ ...item, files: clone(data.worktree) }))
+    if (canUseSandboxWorkspace()) {
+      await deleteSandboxFile(path).catch(() => {})
+    }
+    return true
+  }
+  if (!(path in entry.files)) {
+    return false
+  }
+  const { [path]: _removed, ...rest } = entry.files
+  updateEntry(entry.id, (item) => ({ ...item, files: rest }))
+  if (canUseSandboxWorkspace()) {
+    await deleteSandboxFile(path).catch(() => {})
+  }
+  return true
+}
+
 /** 丢弃全部改动 */
 export const discardAll = async () => {
   const state = useWorkspace.getState()

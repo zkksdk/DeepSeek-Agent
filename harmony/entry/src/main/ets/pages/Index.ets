@@ -11,6 +11,16 @@ import { cryptoFramework } from '@kit.CryptoArchitectureKit'
 import { http } from '@kit.NetworkKit'
 import { util } from '@kit.ArkTS'
 import { WebAssets } from '../web/WebAssets'
+import {
+  AppUtil,
+  DeviceUtil,
+  DisplayUtil,
+  NetworkUtil,
+  NotificationUtil,
+  PasteboardUtil,
+  PreferencesUtil,
+  ToastUtil,
+} from '@pura/harmony-utils'
 
 // 0x0000 是保留值，hilog 会把它吞掉，日志里一条都看不到。用应用自己的 domain。
 const DOMAIN: number = 0xA04510
@@ -33,6 +43,39 @@ const SANDBOX_WS_STATE: string = 'state.json'
 const SANDBOX_WS_FILES: string = 'files'
 
 /** 壳回给页面的写盘结果，ArkTS 不接受匿名对象字面量 */
+/** 设备 / 屏幕 / 应用信息；任一字段取不到就整体失败，不让 Web 侧读到半截数据 */
+interface NativeInfoResult {
+  ok: boolean
+  brand?: string
+  model?: string
+  brandModel?: string
+  marketName?: string
+  width?: number
+  height?: number
+  apiVersion?: number
+  colorMode?: string
+  error?: string
+}
+
+interface NativeNetworkResult {
+  ok: boolean
+  available?: boolean
+  metered?: boolean
+  error?: string
+}
+
+interface NativeClipboardResult {
+  ok: boolean
+  text?: string
+  error?: string
+}
+
+interface NativePrefResult {
+  ok: boolean
+  value?: string
+  error?: string
+}
+
 interface ShellWriteResult {
   ok: boolean
   error?: string
@@ -1067,6 +1110,109 @@ class ShellBridge {
     }
   }
 
+  // ===== 原生能力桥（@pura/harmony-utils）=====
+  // Web 层拿不到这些东西：设备信息、网络状态、系统通知、Toast、剪贴板。
+  // 全部同步返回字符串，失败也返 JSON，不抛异常——跨桥抛出去 Web 侧只会看到 undefined。
+
+  /** 设备 + 屏幕 + 应用信息，一次取全，Web 侧缓存着用 */
+  nativeInfo(): string {
+    try {
+      const info: NativeInfoResult = {
+        ok: true,
+        brand: DeviceUtil.getBrand(),
+        model: DeviceUtil.getProductModel(),
+        brandModel: DeviceUtil.getBrandModel(),
+        marketName: DeviceUtil.getMarketName(),
+        width: DisplayUtil.getWidth(),
+        height: DisplayUtil.getHeight(),
+        apiVersion: AppUtil.isApiSupported(12) ? 12 : 0,
+        colorMode: AppUtil.getColorMode() === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ? 'dark' : 'light',
+      }
+      return JSON.stringify(info)
+    } catch (error) {
+      const failure: NativeInfoResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /** 网络状态：有没有网、是不是流量 */
+  nativeNetwork(): string {
+    try {
+      const result: NativeNetworkResult = {
+        ok: true,
+        available: NetworkUtil.isNetworkAvailable(),
+        metered: NetworkUtil.isDefaultNetMeteredSync(),
+      }
+      return JSON.stringify(result)
+    } catch (error) {
+      const failure: NativeNetworkResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /** 发一条系统通知 */
+  nativeNotify(title: string, text: string): string {
+    try {
+      // 这个库的写法是平铺的 { id, title, text }，不是系统 API 的 content.normal 嵌套
+      NotificationUtil.publishBasic({
+        id: Date.now() % 100000,
+        title: title,
+        text: text,
+      })
+      const done: ShellWriteResult = { ok: true }
+      return JSON.stringify(done)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /** 系统 Toast：比 Web 层自己画的更贴近系统观感，且能在页面切换后继续显示 */
+  nativeToast(text: string): string {
+    try {
+      ToastUtil.showToast(text)
+      const done: ShellWriteResult = { ok: true }
+      return JSON.stringify(done)
+    } catch (error) {
+      const failure: ShellWriteResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /** 剪贴板：mode 为 read 时返回文本，为 write 时把 text 写进去 */
+  nativeClipboard(mode: string, text: string): string {
+    try {
+      if (mode === 'write') {
+        PasteboardUtil.setDataTextSync(text)
+        const done: NativeClipboardResult = { ok: true }
+        return JSON.stringify(done)
+      }
+      const value: string = PasteboardUtil.getDataTextSync()
+      const result: NativeClipboardResult = { ok: true, text: value }
+      return JSON.stringify(result)
+    } catch (error) {
+      const failure: NativeClipboardResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
+  /** 轻量持久化：比 localStorage 更抗 WebView 数据清理 */
+  nativePref(mode: string, key: string, value: string): string {
+    try {
+      if (mode === 'set') {
+        PreferencesUtil.putSync(key, value)
+        const done: NativePrefResult = { ok: true }
+        return JSON.stringify(done)
+      }
+      const stored: string = PreferencesUtil.getStringSync(key, '')
+      const result: NativePrefResult = { ok: true, value: stored }
+      return JSON.stringify(result)
+    } catch (error) {
+      const failure: NativePrefResult = { ok: false, error: (error as Error).message }
+      return JSON.stringify(failure)
+    }
+  }
+
   /**
    * 用一份完整快照重建沙箱工作树。
    *
@@ -1380,6 +1526,14 @@ struct Index {
     // webview.WebviewController.setWebDebuggingAccess(true)
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
+    // @pura/harmony-utils 要求先注入 context，否则所有 Util 调用都抛异常。
+    // AppUtil 给 NotificationUtil / DisplayUtil 用，PreferencesUtil 要先选一个存储名。
+    try {
+      AppUtil.init(context)
+      PreferencesUtil.init('dsk_native')
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'harmony-utils init failed: %{public}s', (error as Error).message)
+    }
     this.bridge = new ShellBridge(context)
     // 沙箱工作区由壳自己建，不等 Web：Web 侧拿到 __DS_SHELL__ 之前什么都做不了。
     try {
@@ -1896,7 +2050,7 @@ struct Index {
           .javaScriptProxy({
             object: this.bridge as ShellBridge,
             name: '__DS_SHELL__',
-            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree', 'sandboxInfo', 'clearSandbox', 'setActiveWorkspace', 'listSandboxDir', 'readSandboxFile'],
+            methodList: ['notify', 'onHash', 'login', 'log', 'locate', 'pickFolder', 'fetchUrl', 'browse', 'openBrowser', 'writeWorkspaceFile', 'refreshWorkspace', 'exportWorkspace', 'importWorkspace', 'readWorkspaceState', 'writeWorkspaceState', 'readWorkspaceTree', 'writeSandboxFile', 'deleteSandboxFile', 'replaceWorkspaceTree', 'sandboxInfo', 'clearSandbox', 'setActiveWorkspace', 'listSandboxDir', 'readSandboxFile', 'nativeInfo', 'nativeNetwork', 'nativeNotify', 'nativeToast', 'nativeClipboard', 'nativePref'],
             controller: this.controller,
           })
           .onInterceptRequest((event) => {
