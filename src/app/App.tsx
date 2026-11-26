@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslate } from '../i18n/index.js'
+import { useOnline } from '../services/workspace/network.js'
 import { useSettings } from '../services/settings.js'
 import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
 import {
@@ -69,6 +70,8 @@ export const App = () => {
   const activeId = useChatStore((state) => state.activeId)
   // 分享链接是一层独立页面：不走会话视图，避免先闪一下欢迎页
   const route = useRoute()
+  // 断网提示：原生网络状态 5 秒轮询一次，比 navigator.onLine 及时
+  const online = useOnline()
 
   usePreventPageScroll(isMobile)
 
@@ -119,6 +122,11 @@ export const App = () => {
 
   return (
     <>
+      {online ? null : (
+        <div className={styles.offlineBar} role="status" aria-live="polite">
+          {t('offlineBanner')}
+        </div>
+      )}
       <div ref={frameRef} className={styles.frame}>
         {look === 'aurora' ? <Aurora /> : null}
         {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}        <main className={styles.main}>

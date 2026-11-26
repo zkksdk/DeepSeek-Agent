@@ -5,7 +5,9 @@ import { Modal } from '../base/Modal.js'
 import { Button } from '../base/Button.js'
 import { IconPlug, IconSpark, toolIcon } from './ToolIcons.js'
 import { getToolsRevision, listTools, subscribeTools } from '../../services/agent/registry.js'
-import { needsApproval, sourceLabel, type ToolSource } from '../../services/agent/types.js'
+import {
+  needsApproval,
+} from '../../services/agent/types.js'
 import { isExtensionAvailable, subscribeExtension } from '../../services/agent/extension.js'
 import {
   connectDesktop,
@@ -92,29 +94,103 @@ export const AgentPanel = () => {
   )
 }
 
+/** 内置工具的功能分类。名字对不上就落到「其他」，不至于漏显示。 */
+const CATEGORY_ORDER = ['file', 'memory', 'agent', 'utility', 'system', 'other']
+
+const CATEGORY_MAP: Record<string, string> = {
+  workspace: 'workspace',
+  workspace_edit: 'workspace',
+  // 文件
+  create_tool: 'agent',
+  delete_tool: 'agent',
+  show_widget: 'agent',
+  ask_user: 'agent',
+  // 记忆
+  save_memory: 'memory',
+  recall_memory: 'memory',
+  // 联网与设备
+  fetch_webpage: 'file',
+  browse_web: 'file',
+  open_url: 'file',
+  view_image: 'file',
+  preview_file: 'file',
+  create_file: 'file',
+  // 任务编排
+  task_status: 'agent',
+  task_cancel: 'agent',
+  manage_goals: 'agent',
+  spawn_subagent: 'agent',
+  // 实用工具
+  calculate: 'utility',
+  random: 'utility',
+  encode: 'utility',
+  hash_text: 'utility',
+  jwt_decode: 'utility',
+  json: 'utility',
+  csv: 'utility',
+  text: 'utility',
+  date: 'utility',
+  qrcode_generate: 'utility',
+  // 系统能力
+  get_datetime: 'system',
+  get_location: 'system',
+  get_weather: 'system',
+  send_notification: 'system',
+  read_clipboard: 'system',
+  write_clipboard: 'system',
+}
+
+const toolCategory = (name: string) => CATEGORY_MAP[name] ?? 'other'
+
+const CATEGORY_LABEL: Record<string, string> = {
+  workspace: '工作区',
+  file: '文件与内容',
+  memory: '记忆',
+  agent: '任务与编排',
+  utility: '实用工具',
+  system: '系统能力',
+  other: '其他',
+}
+
 const ToolsTab = () => {
   const t = useTranslate()
   const definitions = listTools()
   if (definitions.length === 0) {
     return <div className={styles.empty}>{t('agentToolsEmpty')}</div>
   }
+  // 分组口径：MCP 服务器单独成组，内置工具按功能归类。
+  // 不按 source 分是因为内置工具全挂在 browser 下，会挤成一大坨看不出结构。
   const groups = new Map<string, typeof definitions>()
+  const order: string[] = []
   for (const definition of definitions) {
-    const key = `${definition.source}:${definition.serverName ?? ''}`
-    const list = groups.get(key) ?? []
-    list.push(definition)
-    groups.set(key, list)
+    const key =
+      definition.source === 'mcp' && definition.serverName
+        ? `mcp:${definition.serverName}`
+        : `cat:${toolCategory(definition.name)}`
+    if (!groups.has(key)) {
+      order.push(key)
+      groups.set(key, [])
+    }
+    groups.get(key)!.push(definition)
   }
+  // 固定顺序：先工作区，再能力，最后 MCP
+  const rank = (key: string) => {
+    if (key === 'cat:workspace') return 0
+    if (key.startsWith('cat:')) return 1 + CATEGORY_ORDER.indexOf(key.slice(4))
+    return 100
+  }
+  const sortedKeys = order.sort((a, b) => rank(a) - rank(b))
   return (
     <div className={styles.groups}>
-      {[...groups.entries()].map(([key, list]) => {
-        const [source, serverName] = key.split(':')
+      {sortedKeys.map((key) => {
+        const list = groups.get(key) ?? []
+        const [kind, value] = key.split(':')
+        const groupLabel =
+          kind === 'mcp' ? value : (CATEGORY_LABEL[value] ?? CATEGORY_LABEL.other)
         return (
           <div key={key} className={styles.group}>
             <div className={styles.groupHead}>
-              <span className={styles.groupName}>
-                {serverName || sourceLabel(source as ToolSource)}
-              </span>
+              <span className={styles.groupName}>{groupLabel}</span>
               <span className={styles.groupCount}>{list.length}</span>
             </div>
             <div className={styles.toolList}>

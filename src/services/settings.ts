@@ -38,6 +38,8 @@ export type GlassPreference = 'liquid' | 'frost' | 'off'
 
 /** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、深度思考与智能搜索开关、侧边栏收起状态 */
 type Settings = {
+  /** 长任务在后台完成时发系统通知 */
+  notifyOnDone: boolean
   apiKey: string | null
   locale: Locale
   themePreference: ThemePreference
@@ -96,6 +98,7 @@ const KEYS = {
   search: 'chat-demo:search',
   siderCollapsed: 'chat-demo:sider-collapsed',
   agentEnabled: 'chat-agent:agent-enabled',
+  notifyOnDone: 'chat-agent:notify-on-done',
   toolApproval: 'chat-agent:tool-approval',
   maxToolRounds: 'chat-agent:max-tool-rounds',
   maxStepsEnabled: 'chat-agent:max-steps-enabled',
@@ -250,6 +253,7 @@ export const useSettings = create<Settings>(() => ({
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
   // 默认开启工具能力，首次使用即可体验 agent
   agentEnabled: read(KEYS.agentEnabled) !== 'false',
+  notifyOnDone: read(KEYS.notifyOnDone) !== 'false',
   toolApproval: read(KEYS.toolApproval) === 'auto' ? 'auto' : 'ask',
   maxToolRounds: clampRounds(Number(read(KEYS.maxToolRounds) ?? 8)),
   maxStepsEnabled: read(KEYS.maxStepsEnabled) !== 'false',

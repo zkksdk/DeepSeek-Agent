@@ -18,6 +18,7 @@ import { clearUserPrompts } from '../agent/userPrompt.js'
 import { mockStreamMessage } from '../agent/mock.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import { setActiveWorkspace, useWorkspace } from '../workspace/store.js'
+import { markRunStart, notifyRunDone } from '../workspace/notify.js'
 import * as db from './db.js'
 import {
   beginLiveRun,
@@ -507,6 +508,17 @@ export const newChat = () => {  if (!get().importingHistory) {
 
 /** 不切换界面的详情读取：分享、导出这类动作需要完整消息但不想打断当前会话 */
 export const loadSessionDetail = (id: string): Promise<void> => ensureSessionLoaded(id)
+
+/** 取回复里最后一段文字，用于通知预览 */
+const lastTextOf = (reply: { blocks: Array<{ type: string; text?: string }> }) => {
+  for (let i = reply.blocks.length - 1; i >= 0; i--) {
+    const block = reply.blocks[i]
+    if (block.type === 'text' && block.text) {
+      return block.text
+    }
+  }
+  return ''
+}
 
 export const selectSession = (id: string) => {
   if (!get().importingHistory && get().sessions.some((session) => session.id === id)) {
@@ -1108,6 +1120,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
     titleRequests.add(controller)
   }
   set((state) => ({ streaming: { ...state.streaming, [sessionId]: controller } }))
+  markRunStart()
   let reply = initial
   /** 首个请求真正发出时才开始计时，附件上传时间不计入首字延迟 */
   let metricsStarted = false
@@ -1359,6 +1372,8 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
     }
   } finally {
     finishLiveRun(sessionId)
+    // 长任务在后台跑完时提醒一句；前台盯着看的不会触发
+    notifyRunDone(lastTextOf(reply))
     clearApprovals((item) => item.sessionId === sessionId)
     // 本轮结束（含中止）时撤掉还挂着的提问卡片，避免留下无人等待的输入
     clearUserPrompts((item) => item.sessionId === sessionId)

@@ -1840,31 +1840,91 @@ const qrcodeTool = defineTool(
   'browser'
 )
 
+/**
+ * 把若干同族工具收进一个入口：调用方传 action 选具体动作，
+ * 内部转给原来那个工具执行。
+ *
+ * 26 个工具对模型来说太多，注意力会被稀释：挑工具的决策成本高于工具本身的价值。
+ * 合并只改入口，不改实现——原来的校验、格式化、产物逻辑全部沿用。
+ */
+const group = (
+  name: string,
+  label: string,
+  description: string,
+  actions: Record<string, { tool: RegisteredTool; hint: string }>
+): RegisteredTool => {
+  const keys = Object.keys(actions)
+  return defineTool(
+    {
+      name,
+      label,
+      description: `${description}。action 可选：${keys.map((k) => `${k}（${actions[k].hint}）`).join('；')}。`,
+      inputSchema: objectSchema(
+        {
+          action: { type: 'string', enum: keys, description: '要执行的动作' },
+          ...Object.fromEntries(
+            keys.flatMap((k) =>
+              Object.entries(
+                ((actions[k].tool.definition.inputSchema as { properties?: Record<string, unknown> })
+                  .properties ?? {}) as Record<string, unknown>
+              )
+            )
+          ),
+        },
+        ['action']
+      ),
+      risk: keys.some((k) => actions[k].tool.definition.risk === 'write') ? 'write' : 'safe',
+      icon: actions[keys[0]].tool.definition.icon,
+    },
+    async (input, context) => {
+      const action = str(input, 'action', keys[0])
+      const picked = actions[action]
+      if (!picked) {
+        return fail(`未知的 action：${action}。可选：${keys.join('、')}`)
+      }
+      const { action: _action, ...rest } = input
+      return picked.tool.execute(rest, context)
+    }
+  )
+}
+
 export const utilityTools: RegisteredTool[] = [
   calculateTool,
-  randomNumberTool,
-  randomBytesTool,
-  passwordTool,
-  base64Tool,
-  urlCodecTool,
-  hashTool,
   jwtTool,
-  jsonFormatTool,
-  jsonQueryTool,
-  jsonDiffTool,
-  csvToJsonTool,
-  jsonToCsvTool,
-  textStatsTool,
-  wordFrequencyTool,
-  dedupeTool,
-  stripInvisibleTool,
-  regexExtractTool,
-  markdownTocTool,
-  similarityTool,
-  templateTool,
-  diffTextTool,
-  dateCalcTool,
-  timezoneTool,
-  cronTool,
   qrcodeTool,
+  group('random', '随机', '生成随机数、随机字节或随机密码', {
+    number: { tool: randomNumberTool, hint: '指定范围的整数' },
+    bytes: { tool: randomBytesTool, hint: '随机字节（hex/base64）' },
+    password: { tool: passwordTool, hint: '按强度生成密码' },
+  }),
+  group('encode', '编解码', 'Base64 与 URL 的编码解码', {
+    base64: { tool: base64Tool, hint: 'Base64 编/解' },
+    url: { tool: urlCodecTool, hint: 'URL 编/解' },
+  }),
+  hashTool,
+  group('json', 'JSON', 'JSON 格式化、查询与比较', {
+    format: { tool: jsonFormatTool, hint: '格式化或压缩' },
+    query: { tool: jsonQueryTool, hint: '按路径取值' },
+    diff: { tool: jsonDiffTool, hint: '比较两份 JSON' },
+  }),
+  group('csv', 'CSV', 'CSV 与 JSON 互转', {
+    to_json: { tool: csvToJsonTool, hint: 'CSV 转 JSON' },
+    to_csv: { tool: jsonToCsvTool, hint: 'JSON 转 CSV' },
+  }),
+  group('text', '文本', '字数统计、词频、去重、正则提取、目录、相似度、模板、文本 diff', {
+    stats: { tool: textStatsTool, hint: '字数/行数统计' },
+    words: { tool: wordFrequencyTool, hint: '词频' },
+    dedupe: { tool: dedupeTool, hint: '按行去重' },
+    strip: { tool: stripInvisibleTool, hint: '去不可见字符' },
+    regex: { tool: regexExtractTool, hint: '正则提取' },
+    toc: { tool: markdownTocTool, hint: '生成 Markdown 目录' },
+    similarity: { tool: similarityTool, hint: '相似度比较' },
+    template: { tool: templateTool, hint: '模板填充' },
+    diff: { tool: diffTextTool, hint: '两段文本的 diff' },
+  }),
+  group('date', '日期', '日期计算、时区转换与 cron 推算', {
+    calc: { tool: dateCalcTool, hint: '加减日期' },
+    timezone: { tool: timezoneTool, hint: '时区换算' },
+    cron: { tool: cronTool, hint: '下次 cron 触发时间' },
+  }),
 ]

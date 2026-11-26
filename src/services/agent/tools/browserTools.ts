@@ -3,6 +3,7 @@ import { createArtifact, formatBytes } from '../artifacts.js'
 import * as db from '../../chat/db.js'
 import { workspaceSnapshot } from '../../workspace/store.js'
 import { isPublicWebUrl } from '../../../utils/url.js'
+import { copyText, readText } from '../../../utils/clipboard.js'
 import {
   downscaleImage,
   readBase64Payload,
@@ -370,7 +371,7 @@ const clipboardReadTool = defineTool(
   },
   async () => {
     try {
-      const text = await navigator.clipboard.readText()
+      const text = await readText()
       return ok(text ? clip(text, 8000) : '（剪贴板为空）')
     } catch (error) {
       return fail(
@@ -391,7 +392,7 @@ const clipboardWriteTool = defineTool(
   async (input) => {
     const text = str(input, 'text')
     try {
-      await navigator.clipboard.writeText(text)
+      await copyText(text)
       return ok(`已复制 ${text.length} 个字符到剪贴板`)
     } catch (error) {
       return fail(`写入剪贴板失败：${error instanceof Error ? error.message : String(error)}`)

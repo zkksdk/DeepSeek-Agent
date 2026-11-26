@@ -61,3 +61,20 @@
     height: var(--app-viewport-height, 100dvh);
   }
 }
+
+
+/* 断网提示：横在页面最顶端，压在内容之上；恢复联网后立刻消失 */
+.offlineBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  padding: 7px 16px;
+  background: rgba(198, 88, 88, 0.92);
+  color: #fff;
+  font-size: 12.5px;
+  text-align: center;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(8px);
+}

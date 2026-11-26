@@ -1,4 +1,5 @@
 export const zh = {
+  offlineBanner: '当前没有网络连接，消息发不出去',
   sessionModeToggle: '切换会话模式',
   browserChipExpand: '展开',
   browserChipOpen: '展开内嵌浏览器',

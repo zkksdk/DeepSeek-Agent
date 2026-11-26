@@ -1,5 +1,6 @@
 import type { zh } from './zh.js'
 export const en = {
+  offlineBanner: 'No network connection — messages cannot be sent',
   sessionModeToggle: 'Toggle session mode',
   browserChipExpand: 'Expand',
   browserChipOpen: 'Expand built-in browser',

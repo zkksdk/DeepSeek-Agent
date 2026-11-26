@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { canUseNative, readNativePref, writeNativePref } from './native.js'
 import { demoWorkspace } from './demo.js'
 import { diffWorkspace } from './diff.js'
 import { deleteHandle, ensurePermission, loadHandle, saveHandle } from './handles.js'
@@ -189,7 +190,21 @@ type SavedList = {
 
 const readSavedList = (): SavedList => {
   try {
-    const raw = localStorage.getItem(LIST_KEY)
+    // localStorage 被系统清理或 WebView 重建后会读空，这时回落到原生存储。
+    // 只写不读等于没写——沙箱里的 ws_xxx 目录还在，界面却列不出来。
+    let raw = localStorage.getItem(LIST_KEY)
+    if (!raw && canUseNative()) {
+      const native = readNativePref(LIST_KEY)
+      if (native) {
+        raw = native
+        // 顺手补回 localStorage，下次就不用再走原生
+        try {
+          localStorage.setItem(LIST_KEY, native)
+        } catch {
+          // 配额不足时忽略
+        }
+      }
+    }
     if (!raw) {
       return { version: STORAGE_VERSION, activeId: DEMO_ID, local: [], custom: [] }
     }
@@ -292,9 +307,7 @@ const syncSandboxState = async () => {
 const persistList = () => {
   const state = useWorkspace.getState()
   try {
-    localStorage.setItem(
-      LIST_KEY,
-      JSON.stringify({
+    const payload = JSON.stringify({
         version: STORAGE_VERSION,
         activeId: state.activeId,
         local: state.entries
@@ -302,9 +315,15 @@ const persistList = () => {
           .map((entry) => ({ id: entry.id, name: entry.name })),
         custom: state.entries
           .filter((entry) => entry.source === 'demo' && entry.id !== DEMO_ID)
-          .map((entry) => ({ id: entry.id, name: entry.name, root: entry.root, archived: entry.archived })),
-      })
-    )
+          .map((entry) => ({ id: entry.id, name: entry.name, root: entry.root, archived: entry.archived === true })),
+    })
+    localStorage.setItem(LIST_KEY, payload)
+    // 双写一份到原生存储：WebView 的 localStorage 在系统清理存储、
+    // 或者 WebView 组件重建时会丢，而工作区列表丢了就等于用户的数据还在、界面却看不见。
+    if (canUseNative()) {
+      writeNativePref(LIST_KEY, payload)
+    }
+    return
   } catch {
     // 忽略存储失败
   }
