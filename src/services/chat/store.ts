@@ -17,7 +17,7 @@ import { clearApprovals } from '../agent/approval.js'
 import { clearUserPrompts } from '../agent/userPrompt.js'
 import { mockStreamMessage } from '../agent/mock.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
-import { useWorkspace } from '../workspace/store.js'
+import { setActiveWorkspace, useWorkspace } from '../workspace/store.js'
 import * as db from './db.js'
 import {
   beginLiveRun,
@@ -514,6 +514,12 @@ export const selectSession = (id: string) => {
     set({ activeId: id })
     void ensureSessionLoaded(id)
     trimSessionCache()
+    // 会话记着自己在哪个工作区，打开时要跟着切过去——
+    // 否则在「测试」里开的会话，点开看到的还是 deepseek-agent 的文件。
+    const owner = get().sessions.find((item) => item.id === id)?.workspaceId
+    if (owner && useWorkspace.getState().activeId !== owner) {
+      setActiveWorkspace(owner)
+    }
   }
 }
 
