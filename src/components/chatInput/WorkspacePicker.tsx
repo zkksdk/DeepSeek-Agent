@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import {
-  useWorkspace,
+  createWorkspace,
   setActiveWorkspace,
+  useWorkspace,
 } from '../../services/workspace/store.js'
 import { setDesktopPlane, setWebPlane, useWorkspacePlane } from '../../services/workspace/plane.js'
 import {
@@ -28,7 +29,9 @@ const DESKTOP_PREFIX = 'desktop:'
  */
 export const WorkspacePicker = () => {
   const t = useTranslate()
-  const entries = useWorkspace((state) => state.entries)
+  const allEntries = useWorkspace((state) => state.entries)
+  // 归档的不在选择器里出现
+  const entries = allEntries.filter((item) => !item.archived)
   const activeId = useWorkspace((state) => state.activeId)
   const loading = useWorkspace((state) => state.loading)
   const plane = useWorkspacePlane()
@@ -107,6 +110,7 @@ export const WorkspacePicker = () => {
         })
       }}
       footer={
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
         <button
           type="button"
           className={styles.option}
@@ -121,6 +125,30 @@ export const WorkspacePicker = () => {
             <span className={styles.optionLabel}>{t('workspaceOpenPanel')}</span>
           </span>
         </button>
+        <button
+          type="button"
+          className={styles.option}
+          onClick={() => {
+            const name = window.prompt(t('workspaceNewName'))
+            if (name) {
+              const result = createWorkspace(name)
+              if (result.ok && result.id) {
+                setWebPlane()
+                setActiveWorkspace(result.id)
+              } else {
+                showToast({ key: 'workspaceExists', type: 'error' })
+              }
+            }
+          }}
+        >
+          <span className={styles.optionIcon}>
+            <IconFolder />
+          </span>
+          <span className={styles.optionBody}>
+            <span className={styles.optionLabel}>{t('workspacePickCreate')}</span>
+          </span>
+        </button>
+        </div>
       }
     />
   )

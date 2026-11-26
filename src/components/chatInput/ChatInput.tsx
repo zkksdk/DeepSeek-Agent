@@ -46,12 +46,26 @@ import { useTranslate } from '../../i18n/index.js'
 import styles from './ChatInput.module.css'
 
 /** 输入框：自适应高度的文本框 + 文件 + 深度思考与智能搜索开关 + 语音输入 + 发送 / 停止 */
-export const ChatInput = memo(function ChatInput({ sessionId }: { sessionId: string | null }) {
+/** 输入框：自适应高度的文本框 + 文件 + 深度思考与智能搜索开关 + 语音输入 + 发送 / 停止 */
+export const ChatInput = memo(function ChatInput({
+  sessionId,
+  showWorkspace = false,
+}: {
+  sessionId: string | null
+  /** 欢迎页在用：把工作区选择器提到输入框上方；会话页靠上下文决定，不显示 */
+  showWorkspace?: boolean
+}) {
   // 切换目标时释放录音、转写和 DOM 状态；文字与附件由草稿服务保留。
-  return <Input key={sessionId === null ? 'new' : `session:${sessionId}`} sessionId={sessionId} />
+  return (
+    <Input
+      key={sessionId === null ? 'new' : `session:${sessionId}`}
+      sessionId={sessionId}
+      showWorkspace={showWorkspace}
+    />
+  )
 })
 
-const Input = ({ sessionId }: { sessionId: string | null }) => {
+const Input = ({ sessionId, showWorkspace }: { sessionId: string | null; showWorkspace: boolean }) => {
   const t = useTranslate()
   const draft = useDrafts((state) => state.drafts.get(sessionId) ?? EMPTY_DRAFT)
   const { text, attachments } = draft
@@ -183,6 +197,11 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         }
       }}
     >
+      {showWorkspace ? (
+        <div className={styles.workspaceBar}>
+          <WorkspacePicker />
+        </div>
+      ) : null}
       <BrowserChip />
       <ApprovalPanel sessionId={sessionId} />
       <AskUserPanel sessionId={sessionId} />
@@ -229,7 +248,6 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         <div ref={togglesRef} className={styles.toggles}>
           <ModelLevelPicker />
           <PermissionPicker />
-          <WorkspacePicker />
           <PromptPicker onInsert={insertAtCursor} />
           <Tooltip content={t('deactivatedSearchTooltip')}>
             <button

@@ -8,7 +8,7 @@ import {
   type SandboxEntry,
   type SandboxInfo,
 } from '../../services/workspace/local.js'
-import { exportWorkspace, importWorkspace, useWorkspace } from '../../services/workspace/store.js'
+import { exportWorkspace, importWorkspace, unarchiveWorkspace, useWorkspace } from '../../services/workspace/store.js'
 import { Button } from '../base/Button.js'
 import styles from './Settings.module.css'
 
@@ -35,6 +35,8 @@ export const SandboxSetting = () => {
   const t = useTranslate()
   const loading = useWorkspace((state) => state.loading)
   const files = useWorkspace((state) => state.files)
+  const workspaces = useWorkspace((state) => state.entries)
+  const archivedWorkspaces = workspaces.filter((item) => item.archived)
 
   const [info, setInfo] = useState<SandboxInfo | null>(null)
   const [cwd, setCwd] = useState('')
@@ -234,6 +236,32 @@ export const SandboxSetting = () => {
             {message}
           </div>
         ) : null}
+      </div>
+
+      <div className={styles.cell}>
+        <div className={styles.promptHead}>
+          <div className={styles.text}>
+            <div className={styles.label}>{t('workspaceArchived')}</div>
+            <div className={styles.description}>{t('workspaceArchiveHint')}</div>
+          </div>
+        </div>
+        {archivedWorkspaces.length === 0 ? (
+          <div className={styles.description}>{t('workspaceArchiveEmpty')}</div>
+        ) : (
+          <div className={styles.promptList}>
+            {archivedWorkspaces.map((item) => (
+              <div key={item.id} className={styles.promptRow}>
+                <span className={styles.promptRowText}>
+                  <span className={styles.promptRowName}>{item.name}</span>
+                  <span className={styles.promptRowContent}>{item.root}</span>
+                </span>
+                <Button variant="outlined" size="s" onClick={() => unarchiveWorkspace(item.id)}>
+                  {t('workspaceUnarchive')}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   )

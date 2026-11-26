@@ -511,3 +511,19 @@ body[data-ds-dark-theme] .modeTab[data-active] {
   background: rgba(255, 255, 255, 0.1);
   box-shadow: none;
 }
+
+
+/* 欢迎页的工作区选择：放在模式切换下面，和输入框里那个是同一个组件 */
+.workspaceSlot {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+
+.welcome > .badge { order: 1; }
+.welcome > .greeting { order: 2; }
+.welcome > .tagline { order: 3; }
+.welcome > .modeTabs { order: 4; }
+.welcome > .workspaceSlot { order: 5; }
+.welcome > .caps { order: 6; }

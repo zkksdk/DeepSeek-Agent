@@ -129,7 +129,7 @@ export const Welcome = () => {
         </div>
 
         <div className={styles.inputWrap}>
-          <ChatInput sessionId={null} />
+          <ChatInput sessionId={null} showWorkspace={agentEnabled} />
           <LiveStatsBar sessionId={null} />
         </div>
 

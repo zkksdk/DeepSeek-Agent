@@ -112,6 +112,8 @@ export type WorkspaceEntry = {
   handle?: FileSystemDirectoryHandle
   /** 本地目录文件过多被截断 */
   truncated: boolean
+  /** 归档：仍保留，但不占侧栏位置，从「归档管理」里恢复 */
+  archived?: boolean
 }
 
 type WorkspaceStore = {
@@ -176,7 +178,7 @@ export const useWorkspace = create<WorkspaceStore>(() => ({
 /** 多工作区列表（输入框选择器读它） */
 export const useWorkspaceList = () => useWorkspace((state) => state.entries)
 
-type SavedWorkspace = { id: string; name: string; root?: string }
+type SavedWorkspace = { id: string; name: string; root?: string; archived?: boolean }
 type SavedList = {
   version: number
   activeId: string | null
@@ -300,7 +302,7 @@ const persistList = () => {
           .map((entry) => ({ id: entry.id, name: entry.name })),
         custom: state.entries
           .filter((entry) => entry.source === 'demo' && entry.id !== DEMO_ID)
-          .map((entry) => ({ id: entry.id, name: entry.name, root: entry.root })),
+          .map((entry) => ({ id: entry.id, name: entry.name, root: entry.root, archived: entry.archived })),
       })
     )
   } catch {
@@ -317,6 +319,43 @@ const updateEntry = (id: string, update: (entry: WorkspaceEntry) => WorkspaceEnt
 }
 
 /** 切换活动工作区：镜像字段跟着换，面板与工具读到的是同一个快照 */
+/**
+ * 挑一个默认工作区。
+ *
+ * 优先用传入的 id（上次选的那个），不可用就退回「最新的未归档工作区」，
+ * 也就是列表里最后新建的一个——新建即最新，符合直觉。
+ */
+const pickDefaultWorkspace = (entries: WorkspaceEntry[], preferred?: string | null): WorkspaceEntry | null => {
+  const usable = entries.filter((item) => !item.archived)
+  if (usable.length === 0) {
+    return null
+  }
+  const preferredEntry = preferred ? usable.find((item) => item.id === preferred) : undefined
+  return preferredEntry ?? usable[usable.length - 1]
+}
+
+/**
+ * 让当前工作区保持可用：指向的那个归档/删掉了就自动切到最新的。
+ *
+ * 归档管理里恢复/归档之后调一次，避免 activeId 悬空。
+ */
+export const ensureActiveWorkspace = () => {
+  const state = useWorkspace.getState()
+  const current = state.entries.find((item) => item.id === state.activeId)
+  if (current && !current.archived) {
+    return
+  }
+  const next = pickDefaultWorkspace(state.entries, null)
+  if (!next) {
+    return
+  }
+  useWorkspace.setState({ activeId: next.id, ...mirror(next), error: null })
+  persistList()
+  if (canUseSandboxWorkspace()) {
+    void setActiveSandboxWorkspace(next.id)
+  }
+}
+
 export const setActiveWorkspace = (id: string) => {
   const state = useWorkspace.getState()
   const entry = state.entries.find((item) => item.id === id)
@@ -482,6 +521,7 @@ const restoreLocalWorkspaces = async () => {
       files: {},
       base: {},
       truncated: false,
+      archived: item.archived === true,
     }
     useWorkspace.setState((state) => ({
       entries: state.entries.some((e) => e.id === item.id)
@@ -798,6 +838,36 @@ export const createWorkspace = (name: string): { ok: boolean; error?: string; id
     })()
   }
   return { ok: true, id }
+}
+
+/** 归档工作区：保留目录与会话，只是从侧栏收起来 */
+export const archiveWorkspace = (id: string) => {
+  const state = useWorkspace.getState()
+  if (!state.entries.some((item) => item.id === id)) {
+    return false
+  }
+  const entries = state.entries.map((item) => (item.id === id ? { ...item, archived: true } : item))
+  // 归档的是当前工作区，落到第一个未归档的
+  const fallback = state.activeId === id ? entries.find((item) => !item.archived && item.id !== id) : undefined
+  useWorkspace.setState({
+    entries,
+    ...(fallback ? { activeId: fallback.id, ...mirror(fallback) } : {}),
+  })
+  persistList()
+  return true
+}
+
+/** 取消归档 */
+export const unarchiveWorkspace = (id: string) => {
+  const state = useWorkspace.getState()
+  if (!state.entries.some((item) => item.id === id)) {
+    return false
+  }
+  useWorkspace.setState({
+    entries: state.entries.map((item) => (item.id === id ? { ...item, archived: false } : item)),
+  })
+  persistList()
+  return true
 }
 
 /** 重命名工作区 */

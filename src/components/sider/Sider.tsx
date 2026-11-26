@@ -10,7 +10,7 @@ import { useMcp } from '../../services/agent/mcp/store.js'
 import { setSiderCollapsed } from '../../services/settings.js'
 import { groupSessions, groupSessionsByWorkspace } from '../../services/chat/sessionGroups.js'
 import { newChat, removeSession, useChatStore } from '../../services/chat/store.js'
-import { createWorkspace, removeWorkspace, renameWorkspace, setActiveWorkspace, useWorkspace } from '../../services/workspace/store.js'
+import { archiveWorkspace, createWorkspace, removeWorkspace, renameWorkspace, setActiveWorkspace, useWorkspace } from '../../services/workspace/store.js'
 import type { SessionSummary } from '../../services/chat/types.js'
 import { Button } from '../base/Button.js'
 import { IconButton } from '../base/IconButton.js'
@@ -32,7 +32,9 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   // 聊天会话 = mode 为 chat 的那些；工作会话在另一个 tab
   const chatOnly = useMemo(() => sessions.filter((item) => item.mode === 'chat'), [sessions])
   const groups = useMemo(() => groupSessions(chatOnly, now, t), [chatOnly, now, t])
-  const entries = useWorkspace((state) => state.entries)
+  const allEntries = useWorkspace((state) => state.entries)
+  // 归档的不在侧栏占位置，去「设置 → 沙箱 → 归档」里管
+  const entries = allEntries.filter((item) => !item.archived)
   // 工作区 tab 收 mode 为 work 的会话；对话类留给聊天会话 tab
   const assigned = useMemo(() => sessions.filter((item) => item.mode === 'work'), [sessions])
   const workspaceGroups = useMemo(
@@ -47,6 +49,8 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const [wsManaging, setWsManaging] = useState(false)
   // 每个工作区默认只显示 5 条，点「展开其余」临时看全部（离开侧栏就复位）
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(new Set())
+  // 每个工作区分组行右侧的 ⋯ 菜单开关
+  const [menuFor, setMenuFor] = useState<Map<string, boolean>>(new Map())
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
   const [deletePending, setDeletePending] = useState(false)
   const desktopReady = useDesktop((state) => state.status === 'connected')
@@ -224,17 +228,77 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
               ) : (
                 workspaceGroups.map((group) => (
                   <div key={group.key} className={styles.workspaceGroup}>
-                    <button
-                      type="button"
-                      className={styles.workspaceGroupHead}
-                      onClick={() => void setActiveWorkspace(group.key)}
-                    >
-                      <span className={styles.workspaceGroupIcon}>
-                        <IconFolder />
-                      </span>
-                      <span className={styles.workspaceGroupName}>{group.name}</span>
-                      <span className={styles.workspaceGroupCount}>{group.sessions.length}</span>
-                    </button>
+                    <div className={styles.workspaceGroupHead}>
+                      <button
+                        type="button"
+                        className={styles.workspaceGroupMain}
+                        onClick={() => void setActiveWorkspace(group.key)}
+                      >
+                        <span className={styles.workspaceGroupIcon}>
+                          <IconFolder />
+                        </span>
+                        <span className={styles.workspaceGroupName}>{group.name}</span>
+                        <span className={styles.workspaceGroupCount}>{group.sessions.length}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.workspaceGroupMenu}
+                        aria-label={t('workspaceManage')}
+                        onClick={() => {
+                          const next = new Map(menuFor)
+                          next.set(group.key, !menuFor.get(group.key))
+                          setMenuFor(next)
+                        }}
+                      >
+                        ⋯
+                      </button>
+                      {menuFor.get(group.key) ? (
+                        <div className={styles.workspaceMenu}>
+                          <button
+                            type="button"
+                            className={styles.workspaceMenuItem}
+                            onClick={() => {
+                              newChat()
+                              void setActiveWorkspace(group.key)
+                              setMenuFor(new Map())
+                            }}
+                          >
+                            {t('workspaceNewSession')}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.workspaceMenuItem}
+                            onClick={() => {
+                              const name = window.prompt(t('workspaceRenamePrompt'), group.name)
+                              if (name) renameWorkspace(group.key, name)
+                              setMenuFor(new Map())
+                            }}
+                          >
+                            {t('workspaceRename')}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.workspaceMenuItem}
+                            onClick={() => {
+                              archiveWorkspace(group.key)
+                              setMenuFor(new Map())
+                            }}
+                          >
+                            {t('workspaceArchive')}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.workspaceMenuItemDanger}
+                            onClick={() => {
+                              void removeWorkspace(group.key)
+                              setMenuFor(new Map())
+                            }}
+                          >
+                            {t('workspaceDeleteGroup')}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   {(expandedWorkspaces.has(group.key) ? group.sessions : group.sessions.slice(0, 5)).map((session) => (
                       <SessionItem
                         key={session.id}

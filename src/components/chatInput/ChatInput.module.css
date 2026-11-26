@@ -441,3 +441,11 @@ body[data-ds-dark-theme] .wrapper[data-glass].home {
     display: none;
   }
 }
+
+
+/* 欢迎页：工作区选择器坐在输入框上方，和工作模式绑定 */
+.workspaceBar {
+  display: flex;
+  justify-content: center;
+  padding: 0 12px 8px;
+}
