@@ -340,6 +340,15 @@ const pickDefaultWorkspace = (entries: WorkspaceEntry[], preferred?: string | nu
  * 归档管理里恢复/归档之后调一次，避免 activeId 悬空。
  */
 export const ensureActiveWorkspace = () => {
+  // 先保证演示仓库没被归档，否则后面没落脚点
+  const before = useWorkspace.getState()
+  if (before.entries.some((item) => item.id === DEMO_ID && item.archived)) {
+    useWorkspace.setState({
+      entries: before.entries.map((item) =>
+        item.id === DEMO_ID ? { ...item, archived: false } : item
+      ),
+    })
+  }
   const state = useWorkspace.getState()
   const current = state.entries.find((item) => item.id === state.activeId)
   if (current && !current.archived) {
@@ -387,7 +396,8 @@ export const initWorkspace = () => {
   // 本地目录模式已下线：HarmonyOS 的目录授权是临时的，重开后必然失效，
   // 强行恢复只会让面板停在一个用不了的目录上。现在只保留应用内工作区，
   // 用户要带数据进来就走进口（zip 导入）。
-  void restoreLocalWorkspaces
+  // 少了括号就只是取函数引用，根本不执行——自建工作区全靠它恢复
+  void restoreLocalWorkspaces()
   void restoreSandboxWorkspace()
 }
 
@@ -521,7 +531,8 @@ const restoreLocalWorkspaces = async () => {
       files: {},
       base: {},
       truncated: false,
-      archived: item.archived === true,
+      // 演示仓库是保底工作区，历史上被误归档过，恢复时强制清掉
+      archived: item.id === DEMO_ID ? false : item.archived === true,
     }
     useWorkspace.setState((state) => ({
       entries: state.entries.some((e) => e.id === item.id)
@@ -843,7 +854,12 @@ export const createWorkspace = (name: string): { ok: boolean; error?: string; id
 /** 归档工作区：保留目录与会话，只是从侧栏收起来 */
 export const archiveWorkspace = (id: string) => {
   const state = useWorkspace.getState()
-  if (!state.entries.some((item) => item.id === id)) {
+  const target = state.entries.find((item) => item.id === id)
+  if (!target) {
+    return false
+  }
+  // 演示仓库是保底工作区，归档了选择器就空了，没有可回的落点
+  if (id === DEMO_ID) {
     return false
   }
   const entries = state.entries.map((item) => (item.id === id ? { ...item, archived: true } : item))
@@ -888,11 +904,15 @@ export const renameWorkspace = (id: string, name: string) => {
 }
 
 /** 移除工作区：本地目录同时清掉句柄，演示仓库只重置文件 */
-export const removeWorkspace = async (id: string) => {
+export const removeWorkspace = async (id: string): Promise<{ ok: boolean; reason?: 'not-found' | 'protected' }> => {
   const state = useWorkspace.getState()
   const entry = state.entries.find((item) => item.id === id)
-  if (!entry || entry.id === DEMO_ID) {
-    return false
+  if (!entry) {
+    return { ok: false, reason: 'not-found' }
+  }
+  // 演示仓库是保底工作区，删不得；但对用户来说「没反应」比报错更糟，得说清楚
+  if (entry.id === DEMO_ID) {
+    return { ok: false, reason: 'protected' }
   }
   await deleteHandle(id)
   dropShellSnapshot(id)
@@ -904,7 +924,7 @@ export const removeWorkspace = async (id: string) => {
     ...(fallback ? { activeId: fallback.id, ...mirror(fallback) } : {}),
   })
   persistList()
-  return true
+  return { ok: true }
 }
 
 /** 把当前工作区的全部文件打包成 zip，交给用户保存到手机里 */

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import {
   createWorkspace,
@@ -31,10 +31,30 @@ export const WorkspacePicker = () => {
   const t = useTranslate()
   const allEntries = useWorkspace((state) => state.entries)
   // 归档的不在选择器里出现
-  const entries = allEntries.filter((item) => !item.archived)
+  // 演示仓库永远是保底选项，即使被误归档也要出现，否则选择器会空
+  const entries = allEntries.filter((item) => !item.archived || item.id === 'demo')
   const activeId = useWorkspace((state) => state.activeId)
   const loading = useWorkspace((state) => state.loading)
   const plane = useWorkspacePlane()
+  // ArkWeb 里 window.prompt 会被静默拦掉，只能自己画输入框
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+
+  const submitCreate = () => {
+    const name = newName.trim()
+    if (!name) {
+      return
+    }
+    const result = createWorkspace(name)
+    if (result.ok && result.id) {
+      setWebPlane()
+      setActiveWorkspace(result.id)
+      setCreating(false)
+      setNewName('')
+      return
+    }
+    showToast({ key: 'workspaceExists', type: 'error' })
+  }
   const desktop = useDesktop()
   const connected = desktop.status === 'connected'
   // 直接使用桌面端上报的列表；是否排除配置目录由桌面端决定
@@ -125,29 +145,42 @@ export const WorkspacePicker = () => {
             <span className={styles.optionLabel}>{t('workspaceOpenPanel')}</span>
           </span>
         </button>
-        <button
-          type="button"
-          className={styles.option}
-          onClick={() => {
-            const name = window.prompt(t('workspaceNewName'))
-            if (name) {
-              const result = createWorkspace(name)
-              if (result.ok && result.id) {
-                setWebPlane()
-                setActiveWorkspace(result.id)
-              } else {
-                showToast({ key: 'workspaceExists', type: 'error' })
-              }
-            }
-          }}
-        >
-          <span className={styles.optionIcon}>
-            <IconFolder />
-          </span>
-          <span className={styles.optionBody}>
-            <span className={styles.optionLabel}>{t('workspacePickCreate')}</span>
-          </span>
-        </button>
+        {creating ? (
+          <div className={styles.createRow}>
+            <input
+              className={styles.createInput}
+              value={newName}
+              autoFocus
+              placeholder={t('workspaceNewName')}
+              onChange={(event) => setNewName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  submitCreate()
+                }
+                if (event.key === 'Escape') {
+                  setCreating(false)
+                  setNewName('')
+                }
+              }}
+            />
+            <button type="button" className={styles.createOk} onClick={submitCreate}>
+              {t('workspaceCreate')}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={styles.option}
+            onClick={() => setCreating(true)}
+          >
+            <span className={styles.optionIcon}>
+              <IconFolder />
+            </span>
+            <span className={styles.optionBody}>
+              <span className={styles.optionLabel}>{t('workspacePickCreate')}</span>
+            </span>
+          </button>
+        )}
         </div>
       }
     />

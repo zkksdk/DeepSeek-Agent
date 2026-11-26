@@ -34,7 +34,8 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const groups = useMemo(() => groupSessions(chatOnly, now, t), [chatOnly, now, t])
   const allEntries = useWorkspace((state) => state.entries)
   // 归档的不在侧栏占位置，去「设置 → 沙箱 → 归档」里管
-  const entries = allEntries.filter((item) => !item.archived)
+  // 演示仓库是保底工作区，永远出现在列表里
+  const entries = allEntries.filter((item) => !item.archived || item.id === 'demo')
   // 工作区 tab 收 mode 为 work 的会话；对话类留给聊天会话 tab
   const assigned = useMemo(() => sessions.filter((item) => item.mode === 'work'), [sessions])
   const workspaceGroups = useMemo(
@@ -215,7 +216,16 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
                       <button
                         type="button"
                         className={styles.workspaceManageDelete}
-                        onClick={() => void removeWorkspace(item.id)}
+                        onClick={() => {
+                          void removeWorkspace(item.id).then((result) => {
+                            if (!result.ok) {
+                              showToast({
+                                key: result.reason === 'protected' ? 'workspaceProtected' : 'workspaceRemoveFailed',
+                                type: 'error',
+                              })
+                            }
+                          })
+                        }}
                       >
                         ×
                       </button>
@@ -280,7 +290,12 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
                             type="button"
                             className={styles.workspaceMenuItem}
                             onClick={() => {
-                              archiveWorkspace(group.key)
+                              const ok = archiveWorkspace(group.key)
+                              showToast(
+                                ok
+                                  ? { key: 'workspaceArchivedDone' }
+                                  : { key: 'workspaceProtected', type: 'error' }
+                              )
                               setMenuFor(new Map())
                             }}
                           >
@@ -290,7 +305,14 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
                             type="button"
                             className={styles.workspaceMenuItemDanger}
                             onClick={() => {
-                              void removeWorkspace(group.key)
+                              void removeWorkspace(group.key).then((result) => {
+                                if (!result.ok) {
+                                  showToast({
+                                    key: result.reason === 'protected' ? 'workspaceProtected' : 'workspaceRemoveFailed',
+                                    type: 'error',
+                                  })
+                                }
+                              })
                               setMenuFor(new Map())
                             }}
                           >

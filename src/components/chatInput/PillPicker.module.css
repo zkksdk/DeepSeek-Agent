@@ -170,3 +170,36 @@
     padding: 0 8px;
   }
 }
+
+
+/* 选择器内联新建：不能用 window.prompt（ArkWeb 会静默拦掉） */
+.createRow {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+}
+
+.createInput {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  border-radius: 8px;
+  padding: 6px 9px;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.createOk {
+  flex-shrink: 0;
+  border: none;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}

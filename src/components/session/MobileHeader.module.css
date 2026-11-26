@@ -46,3 +46,9 @@
   background: rgba(57, 100, 254, 0.14);
   color: var(--dsw-alias-brand-primary);
 }
+
+
+/* 把右侧按钮推到最右，和左边的菜单形成对称 */
+.spacer {
+  flex: 1;
+}
