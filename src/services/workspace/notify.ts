@@ -61,9 +61,8 @@ const shouldNotify = () => {
   if (!canUseNative()) {
     return false
   }
-  // 页面在前台 = 用户正看着，不打扰
-  if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-    return false
-  }
+  // 不能用 document.visibilityState 判断前后台：ArkWeb 里它永远是 'visible'，
+  // 哪怕应用已经切到后台。靠它做条件等于永远不发通知。
+  // 改成总是发——用户切走时能看到「正在执行」，在前台时多一条通知也不碍事。
   return useSettings.getState().notifyOnDone
 }

@@ -1153,12 +1153,23 @@ class ShellBridge {
   /** 发一条系统通知 */
   nativeNotify(title: string, text: string, id: number): string {
     try {
+      // 没有通知权限时 publishBasic 会静默失败，界面上什么都不会出现。
+      // 先查一次，没开就弹系统授权框。
+      if (!NotificationUtil.isNotificationEnabledSync()) {
+        NotificationUtil.requestEnableNotification(AppUtil.getContext()).catch((error: Error) => {
+          hilog.warn(DOMAIN, TAG, 'request notification permission failed: %{public}s', error.message)
+        })
+        hilog.warn(DOMAIN, TAG, 'notification disabled, request sent')
+      }
       // 这个库的写法是平铺的 { id, title, text }，不是系统 API 的 content.normal 嵌套
       NotificationUtil.publishBasic({
         id: id > 0 ? id : Date.now() % 100000,
         title: title,
         text: text,
+        notificationSlotType: notificationManager.SlotType.SERVICE_INFORMATION,
+        tapDismissed: true,
       })
+      hilog.info(DOMAIN, TAG, 'nativeNotify sent: %{public}s', title)
       const done: ShellWriteResult = { ok: true }
       return JSON.stringify(done)
     } catch (error) {
