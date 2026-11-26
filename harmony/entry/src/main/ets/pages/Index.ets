@@ -1151,11 +1151,11 @@ class ShellBridge {
   }
 
   /** 发一条系统通知 */
-  nativeNotify(title: string, text: string): string {
+  nativeNotify(title: string, text: string, id: number): string {
     try {
       // 这个库的写法是平铺的 { id, title, text }，不是系统 API 的 content.normal 嵌套
       NotificationUtil.publishBasic({
-        id: Date.now() % 100000,
+        id: id > 0 ? id : Date.now() % 100000,
         title: title,
         text: text,
       })
@@ -1199,15 +1199,19 @@ class ShellBridge {
   /** 轻量持久化：比 localStorage 更抗 WebView 数据清理 */
   nativePref(mode: string, key: string, value: string): string {
     try {
+      hilog.info(DOMAIN, TAG, 'nativePref %{public}s key=%{public}s len=%{public}d', mode, key, value.length)
       if (mode === 'set') {
+        // putSync 内部已 flush，落盘由它保证
         PreferencesUtil.putSync(key, value)
         const done: NativePrefResult = { ok: true }
         return JSON.stringify(done)
       }
       const stored: string = PreferencesUtil.getStringSync(key, '')
+      hilog.info(DOMAIN, TAG, 'nativePref read len=%{public}d', stored.length)
       const result: NativePrefResult = { ok: true, value: stored }
       return JSON.stringify(result)
     } catch (error) {
+      hilog.error(DOMAIN, TAG, 'nativePref failed: %{public}s', (error as Error).message)
       const failure: NativePrefResult = { ok: false, error: (error as Error).message }
       return JSON.stringify(failure)
     }
@@ -1531,6 +1535,7 @@ struct Index {
     try {
       AppUtil.init(context)
       PreferencesUtil.init('dsk_native')
+      hilog.info(DOMAIN, TAG, 'harmony-utils initialized')
     } catch (error) {
       hilog.warn(DOMAIN, TAG, 'harmony-utils init failed: %{public}s', (error as Error).message)
     }

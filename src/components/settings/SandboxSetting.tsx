@@ -14,6 +14,8 @@ import {
   getNativeInfo,
   getNativeNetwork,
   showNativeToast,
+  readNativePref,
+  writeNativePref,
   type NativeInfo,
   type NativeNetwork,
 } from '../../services/workspace/native.js'
@@ -48,6 +50,8 @@ export const SandboxSetting = () => {
   // 原生桥：设备型号、屏幕、网络。浏览器里跑这个页面时都是 null，不显示即可。
   const [nativeInfo, setNativeInfo] = useState<NativeInfo | null>(null)
   const [nativeNet, setNativeNet] = useState<NativeNetwork | null>(null)
+  // 原生存储自检：写一次再读回，证明这条链路真的通
+  const [prefResult, setPrefResult] = useState<string | null>(null)
 
   useEffect(() => {
     if (!canUseNative()) {
@@ -323,6 +327,26 @@ export const SandboxSetting = () => {
             >
               {t('sandboxDeviceTestToast')}
             </Button>
+            <Button
+              variant="outlined"
+              size="s"
+              style={{ marginLeft: 8 }}
+              onClick={() => {
+                const stamp = String(Date.now())
+                const wrote = writeNativePref('selftest', stamp)
+                const back = readNativePref('selftest')
+                setPrefResult(
+                  wrote && back === stamp ? `✅ ${stamp}` : `❌ wrote=${wrote} back=${back}`
+                )
+              }}
+            >
+              {t('sandboxDeviceTestPref')}
+            </Button>
+            {prefResult ? (
+              <div className={styles.description} style={{ marginTop: 8 }}>
+                {prefResult}
+              </div>
+            ) : null}
           </div>
         </div>
       )}

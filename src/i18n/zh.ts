@@ -497,6 +497,7 @@ export const zh = {
   sandboxNetworkMetered: '移动数据',
   sandboxNetworkOffline: '离线',
   sandboxDeviceTestToast: '测试系统 Toast',
+  sandboxDeviceTestPref: '测试原生存储',
   sandboxDeviceToast: '这是系统原生 Toast',
   sandboxCleared: '沙箱已清空',
   sandboxClearFailed: '清空失败',

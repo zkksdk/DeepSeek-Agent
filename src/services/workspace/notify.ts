@@ -2,38 +2,68 @@ import { canUseNative, sendNativeNotify } from './native.js'
 import { useSettings } from '../settings.js'
 
 /**
- * 任务完成通知。
+ * 任务状态通知。
  *
- * 只在「用户已经切走」时发：盯着屏幕等结果的人不需要再弹一条通知，
- * 那只是噪音。判断依据是页面可见性——后台标签或锁屏后才值得提醒。
+ * 三件事共用一条通知（固定 id，系统会原地替换而不是叠加）：
+ * 开始 → 「正在执行」；完成 → 「回复完成」；失败 → 「执行中断」。
  *
- * 长任务才算：几秒钟就回来的对话不值得打扰，阈值取 20 秒。
+ * 只在用户已经切走时发。盯着屏幕等结果的人不需要再看通知栏，
+ * 那是噪音。判断依据是页面可见性——后台标签或锁屏后才值得提醒。
  */
+const NOTIFY_ID = 7107
 const MIN_DURATION_MS = 20_000
 
 let startedAt = 0
+let notified = false
 
+/** 任务开始：如果人不在前台，先发一条「正在执行」，让外部知道有东西在跑 */
 export const markRunStart = () => {
   startedAt = Date.now()
+  notified = false
+  if (!shouldNotify()) {
+    return
+  }
+  sendNativeNotify('正在执行', '任务已开始，完成后会提醒你', NOTIFY_ID)
+  notified = true
 }
 
+/** 任务结束：替换掉那条「正在执行」 */
 export const notifyRunDone = (preview: string) => {
   const elapsed = startedAt === 0 ? 0 : Date.now() - startedAt
   startedAt = 0
 
-  if (elapsed < MIN_DURATION_MS) {
+  const wasNotified = notified
+  notified = false
+
+  // 已经开始执行的那条必须收尾，否则通知栏会一直挂着「正在执行」
+  if (!wasNotified && elapsed < MIN_DURATION_MS) {
     return
   }
-  if (!canUseNative()) {
-    return
-  }
-  // 页面在前台 = 用户正看着，不打扰
-  if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-    return
-  }
-  if (!useSettings.getState().notifyOnDone) {
+  if (!shouldNotify() && !wasNotified) {
     return
   }
   const text = preview.replace(/\s+/g, ' ').trim().slice(0, 80) || '回复已生成'
-  sendNativeNotify('回复完成', text)
+  sendNativeNotify('回复完成', text, NOTIFY_ID)
+}
+
+/** 中断时把「正在执行」改成「已中断」，不留一条骗人的常驻通知 */
+export const notifyRunFailed = () => {
+  startedAt = 0
+  const wasNotified = notified
+  notified = false
+  if (!wasNotified) {
+    return
+  }
+  sendNativeNotify('执行中断', '任务没有跑完，回到应用查看原因', NOTIFY_ID)
+}
+
+const shouldNotify = () => {
+  if (!canUseNative()) {
+    return false
+  }
+  // 页面在前台 = 用户正看着，不打扰
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+    return false
+  }
+  return useSettings.getState().notifyOnDone
 }

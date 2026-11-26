@@ -505,6 +505,7 @@ export const en = {
   sandboxNetworkMetered: 'Cellular',
   sandboxNetworkOffline: 'Offline',
   sandboxDeviceTestToast: 'Test system toast',
+  sandboxDeviceTestPref: 'Test native storage',
   sandboxDeviceToast: 'This is a native system toast',
   sandboxCleared: 'Sandbox cleared',
   sandboxClearFailed: 'Clear failed',

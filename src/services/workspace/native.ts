@@ -10,7 +10,7 @@
 type ShellApi = {
   nativeInfo?: () => string
   nativeNetwork?: () => string
-  nativeNotify?: (title: string, text: string) => string
+  nativeNotify?: (title: string, text: string, id?: number) => string
   nativeToast?: (text: string) => string
   nativeClipboard?: (mode: string, text: string) => string
   nativePref?: (mode: string, key: string, value: string) => string
@@ -72,8 +72,8 @@ export const getNativeNetwork = (): NativeNetwork | null => {
 }
 
 /** 发系统通知；应用没被授予通知权限时返回 false */
-export const sendNativeNotify = (title: string, text: string) => {
-  const result = parse<Record<string, never>>(shell()?.nativeNotify?.(title, text))
+export const sendNativeNotify = (title: string, text: string, id?: number) => {
+  const result = parse<Record<string, never>>(shell()?.nativeNotify?.(title, text, id))
   return result?.ok === true
 }
 

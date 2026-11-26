@@ -18,7 +18,7 @@ import { clearUserPrompts } from '../agent/userPrompt.js'
 import { mockStreamMessage } from '../agent/mock.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import { setActiveWorkspace, useWorkspace } from '../workspace/store.js'
-import { markRunStart, notifyRunDone } from '../workspace/notify.js'
+import { markRunStart, notifyRunDone, notifyRunFailed } from '../workspace/notify.js'
 import * as db from './db.js'
 import {
   beginLiveRun,
@@ -1372,8 +1372,13 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
     }
   } finally {
     finishLiveRun(sessionId)
-    // 长任务在后台跑完时提醒一句；前台盯着看的不会触发
-    notifyRunDone(lastTextOf(reply))
+    // 长任务在后台跑完时提醒一句；前台盯着看的不会触发。
+    // 出错或中止时收尾成「已中断」，别让通知栏一直挂着「正在执行」。
+    if (reply.status === 'error' || reply.status === 'stopped') {
+      notifyRunFailed()
+    } else {
+      notifyRunDone(lastTextOf(reply))
+    }
     clearApprovals((item) => item.sessionId === sessionId)
     // 本轮结束（含中止）时撤掉还挂着的提问卡片，避免留下无人等待的输入
     clearUserPrompts((item) => item.sessionId === sessionId)
