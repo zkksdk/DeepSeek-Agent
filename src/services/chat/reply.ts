@@ -7,6 +7,7 @@ import type {
   TextBlockParam,
   ToolResultBlockParam,
 } from '../api/types.js'
+import { hasDsml, parseDsml } from './dsml.js'
 import { clipText } from '../../utils/format.js'
 import type {
   AssistantMessage,
@@ -154,6 +155,31 @@ export const applyEvent = (
         return next
       }
       blockIndexes.delete(event.index)
+      const current = next.blocks[index]
+      // 有些通道把工具调用写成 DSML 文本而不是 tool_use 事件。
+      // 不在这里拆开，整段标签就会显示给用户，工具一次都不执行。
+      if (current?.type === 'text' && hasDsml(current.text)) {
+        const { text, calls } = parseDsml(current.text)
+        // 文本全被吃掉（整块只有调用）时直接移除，否则换成纯正文
+        const cleaned: ReplyBlock[] = next.blocks.flatMap((item, at) => {
+          if (at !== index) {
+            return [item]
+          }
+          return text ? [{ ...current, text }] : []
+        })
+        for (const call of calls) {
+          cleaned.push({
+            type: 'tool_use',
+            id: `dsml_${Date.now()}_${cleaned.length}`,
+            name: call.name,
+            input: call.input,
+            inputJson: JSON.stringify(call.input),
+            status: 'pending',
+            startedAt: now,
+          } as ReplyBlock)
+        }
+        return { ...next, blocks: cleaned }
+      }
       return updateBlock(next, index, (block) => {
         if (block.type === 'tool_use') {
           // 块结束即可解析完整参数，界面能在执行前展示调用内容。

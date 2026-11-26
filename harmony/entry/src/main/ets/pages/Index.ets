@@ -1187,7 +1187,19 @@ class ShellBridge {
         const done: NativeClipboardResult = { ok: true }
         return JSON.stringify(done)
       }
-      const value: string = PasteboardUtil.getDataTextSync()
+      // 系统剪贴板可能同时装着图片/富文本，getDataTextSync 只认纯文本记录。
+      // 读之前先确认可读、且确实是文本，否则会拿到空串而不是报错。
+      if (!PasteboardUtil.hasDataSync()) {
+        const empty: NativeClipboardResult = { ok: true, text: '' }
+        return JSON.stringify(empty)
+      }
+      let value: string = ''
+      try {
+        value = PasteboardUtil.getDataTextSync()
+      } catch {
+        value = ''
+      }
+      hilog.info(DOMAIN, TAG, 'clipboard read len=%{public}d', value.length)
       const result: NativeClipboardResult = { ok: true, text: value }
       return JSON.stringify(result)
     } catch (error) {

@@ -1897,10 +1897,66 @@ export const utilityTools: RegisteredTool[] = [
     bytes: { tool: randomBytesTool, hint: '随机字节（hex/base64）' },
     password: { tool: passwordTool, hint: '按强度生成密码' },
   }),
-  group('encode', '编解码', 'Base64 与 URL 的编码解码', {
-    base64: { tool: base64Tool, hint: 'Base64 编/解' },
-    url: { tool: urlCodecTool, hint: 'URL 编/解' },
-  }),
+  // 手写而不是走 group：base64/url 自己就用 action=encode|decode，
+  // 套一层 group 会和内层 action 撞名，参数传不进原工具。
+  //
+  // 入参故意放宽：模型会写 action=base64 / action=base64_encode / action=url，
+  // 也可能把文本放 text 或 data。全都接住，不因为参数名不合就失败。
+  defineTool(
+    {
+      name: 'encode',
+      label: '编解码',
+      description:
+        'Base64 或 URL 编解码。action 写 base64 / base64_encode / base64_decode / url / url_encode / url_decode；文本放 text 或 data。',
+      inputSchema: objectSchema(
+        {
+          action: { type: 'string' },
+          text: { type: 'string', description: '要处理的文本' },
+          data: { type: 'string', description: '同 text，二选一' },
+          mode: { type: 'string', enum: ['encode', 'decode'], description: '可选，默认 encode' },
+          url_safe: { type: 'boolean' },
+          component: { type: 'boolean' },
+        },
+        ['action']
+      ),
+      risk: 'safe',
+      icon: 'code',
+    },
+    async (input, context) => {
+      const action = str(input, 'action').toLowerCase()
+      const text = str(input, 'text') || str(input, 'data')
+      const isBase64 = action.startsWith('base64')
+      const isUrl = action.startsWith('url')
+      if (!isBase64 && !isUrl) {
+        return fail(`未知的 action：${action}。可用 base64 / url，带 _encode 或 _decode 后缀也行。`)
+      }
+      if (!text) {
+        return fail('text（或 data）不能为空')
+      }
+      let direction: 'encode' | 'decode'
+      if (action.endsWith('_decode')) {
+        direction = 'decode'
+      } else if (action.endsWith('_encode')) {
+        direction = 'encode'
+      } else {
+        direction = str(input, 'mode', 'encode') === 'decode' ? 'decode' : 'encode'
+      }
+      if (isBase64) {
+        return base64Tool.execute(
+          { action: direction, data: text, url_safe: input.url_safe === true },
+          context
+        )
+      }
+      return urlCodecTool.execute(
+        {
+          action: direction,
+          text,
+          component: input.component === undefined ? true : input.component === true,
+        },
+        context
+      )
+    }
+  ),
   hashTool,
   group('json', 'JSON', 'JSON 格式化、查询与比较', {
     format: { tool: jsonFormatTool, hint: '格式化或压缩' },

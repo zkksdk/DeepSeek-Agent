@@ -168,6 +168,26 @@ export const workspaceTools: RegisteredTool[] = [
     }
   ),
 
+  // 旧名兼容：模型常按「搜工作区」直接找 workspace_search，
+  // 找不到就会以为工具没了、报「MCP 断开」。保留一个薄壳转发到 workspace 的 search。
+  defineTool(
+    {
+      name: 'workspace_search',
+      label: '搜索工作区内容',
+      description: '在工作区文件内容里搜文本，返回命中的文件、行号和那一行。等价于 workspace action=search。',
+      inputSchema: objectSchema(
+        {
+          query: { type: 'string', description: '要搜的文本' },
+          path_prefix: { type: 'string', description: '可选，只看这个目录' },
+        },
+        ['query']
+      ),
+      risk: 'safe',
+      icon: 'search',
+    },
+    async (input) => searchFiles(input)
+  ),
+
   defineTool(
     {
       name: 'workspace_edit',
