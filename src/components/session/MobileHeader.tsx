@@ -26,18 +26,7 @@ export const MobileHeader = ({ title }: { title?: string }) => {
         aria-label={t('expandSiderbarButton')}
         onClick={openMobileSider}
       />
-      {title === undefined ? (
-        <>
-          <span className={styles.spacer} />
-          <IconButton
-            size="xl"
-            tone="primary"
-            icon={<IconFolder />}
-            aria-label={t('workspaceOpenPanel')}
-            onClick={openWorkspacePanel}
-          />
-        </>
-      ) : null}
+      {title === undefined ? <span className={styles.spacer} /> : null}
       {title === undefined ? null : (
         <>
           <div className={styles.title}>{title}</div>
@@ -64,6 +53,13 @@ export const MobileHeader = ({ title }: { title?: string }) => {
           />
         </>
       )}
+      <IconButton
+        size="xl"
+        tone="primary"
+        icon={<IconFolder />}
+        aria-label={t('workspaceOpenPanel')}
+        onClick={openWorkspacePanel}
+      />
     </div>
   )
 }
