@@ -11,6 +11,7 @@ import { cryptoFramework } from '@kit.CryptoArchitectureKit'
 import { http } from '@kit.NetworkKit'
 import { util } from '@kit.ArkTS'
 import { WebAssets } from '../web/WebAssets'
+import type { WantAgent } from '@ohos.wantAgent'
 import {
   AppUtil,
   DeviceUtil,
@@ -1161,14 +1162,31 @@ class ShellBridge {
         })
         hilog.warn(DOMAIN, TAG, 'notification disabled, request sent')
       }
-      // 这个库的写法是平铺的 { id, title, text }，不是系统 API 的 content.normal 嵌套
-      NotificationUtil.publishBasic({
-        id: id > 0 ? id : Date.now() % 100000,
-        title: title,
-        text: text,
-        notificationSlotType: notificationManager.SlotType.SERVICE_INFORMATION,
-        tapDismissed: true,
-      })
+      // 这个库的写法是平铺的 { id, title, text }，不是系统 API 的 content.normal 嵌套。
+      // wantAgent 让点击通知直接拉起应用：交给库自己的 getDefaultWantAgent，
+      // 它用当前 ability 的 bundleName/moduleName/abilityName 拼出来，不用手写。
+      NotificationUtil.getDefaultWantAgent()
+        .then((agent: WantAgent) => {
+          NotificationUtil.publishBasic({
+            id: id > 0 ? id : Date.now() % 100000,
+            title: title,
+            text: text,
+            wantAgent: agent,
+            notificationSlotType: notificationManager.SlotType.SERVICE_INFORMATION,
+            tapDismissed: true,
+          })
+        })
+        .catch((error: Error) => {
+          // 拿不到 wantAgent 也要把通知发出去，只是点了不跳转
+          hilog.warn(DOMAIN, TAG, 'wantAgent failed: %{public}s', error.message)
+          NotificationUtil.publishBasic({
+            id: id > 0 ? id : Date.now() % 100000,
+            title: title,
+            text: text,
+            notificationSlotType: notificationManager.SlotType.SERVICE_INFORMATION,
+            tapDismissed: true,
+          })
+        })
       hilog.info(DOMAIN, TAG, 'nativeNotify sent: %{public}s', title)
       const done: ShellWriteResult = { ok: true }
       return JSON.stringify(done)
